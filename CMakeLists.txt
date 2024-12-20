@@ -55,6 +55,11 @@ if(BUILD_TESTING)
 endif()
 
 target_include_directories(bytesized PUBLIC glm gcem/include stb ${SDL2_INCLUDE_DIR} include)
-target_link_libraries(bytesized PUBLIC ${SDL2_LIBRARY} GLEW::GLEW bytesized_embed)
+set(LIBS ${SDL2_LIBRARY} GLEW::GLEW bytesized_embed)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    set(LIBS ${LIBS} m GL)
+endif()
+target_link_libraries(bytesized PUBLIC ${LIBS})
+
 
 include(cmake/API.cmake)

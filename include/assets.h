@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <list>
+#include <string>
 #include <unordered_map>
 #include <vector>
 

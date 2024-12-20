@@ -1,6 +1,7 @@
 #include "bdf.h"
 
 #include "recycler.hpp"
+#include <cstdlib>
 #include <string_view>
 
 static recycler<bdf::Font, 5> FONTS = {};
@@ -13,7 +14,7 @@ static int parse_int(const char *data, size_t &i) {
     while (is_int(data[i])) {
         ++i;
     }
-    return atoi(data + start);
+    return std::atoi(data + start);
 }
 
 static uint8_t char_to_hex(char c) {

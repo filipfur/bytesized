@@ -3,6 +3,7 @@
 #include "window.h"
 #include <functional>
 #include <list>
+#include <string>
 
 namespace console {
 

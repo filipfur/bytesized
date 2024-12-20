@@ -3,6 +3,7 @@
 #include "filesystem.h"
 #include "gpu.h"
 #include "logging.h"
+#include <algorithm>
 #include <cassert>
 #include <list>
 

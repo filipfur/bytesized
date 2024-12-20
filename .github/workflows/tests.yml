@@ -1,10 +1,6 @@
 name: Build and Test
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+on: [push]
 
 jobs:
   build-and-test:
@@ -21,10 +17,10 @@ jobs:
     
     - name: Install clang-19
       run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 19
-
+      
     - name: Build and test
       env:
-        CC: clang-19
-        CXX: clang-19
+        CC: /usr/lib/llvm-19/bin/clang
+        CXX: /usr/lib/llvm-19/bin/clang++
       run: |
         cmake -B build && cmake --build build && ctest --test-dir build --rerun-failed --output-on-failure

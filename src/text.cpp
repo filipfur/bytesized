@@ -1,5 +1,7 @@
 #include "gpu.h"
 
+#include <cstring>
+
 void gpu::Text::init() {
 
     // clang-format off
