@@ -8,15 +8,23 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        submodules: recursive
 
     - name: Install dependencies
-      run: sudo apt-get install cmake clang libglew-dev libsdl2-dev libgtest-dev
+      run: sudo apt-get install cmake libglew-dev libsdl2-dev libgtest-dev
+    
+    - name: Install clang-19
+      run: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 19
 
     - name: Build and test
+      env:
+        CC: clang-19
+        CXX: clang-19
       run: |
         cmake -B build && cmake --build build && ctest --test-dir build --rerun-failed --output-on-failure
