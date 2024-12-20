@@ -2,6 +2,7 @@
 #include "gpu.h"
 #include "logging.h"
 #include "recycler.hpp"
+#include <algorithm>
 #include <optional>
 
 enum TransformParameter {

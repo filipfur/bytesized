@@ -11,6 +11,7 @@
 #include "uniform.h"
 #include <functional>
 #include <glm/glm.hpp>
+#include <string>
 
 namespace gpu {
 

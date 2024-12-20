@@ -1,5 +1,7 @@
 #include "filesystem.h"
 
+#include <cstdio>
+
 static char __membuf[16777216] = {};
 std::string_view filesystem::loadFile(const char *path) {
     FILE *file_ptr;

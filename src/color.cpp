@@ -1,4 +1,5 @@
 #include "color.h"
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -125,8 +126,8 @@ Color &Color::setHSV(float h, float s, float v) {
 }
 
 void Color::hueShift(float rad) {
-    float U = cosf(rad);
-    float W = sinf(rad);
+    float U = glm::sin(rad);
+    float W = glm::sin(rad);
     static constexpr glm::mat3 yiqMatrix{0.299f,  0.596f, 0.211f,  0.587f, -0.274f,
                                          -0.523f, 0.114f, -0.321f, 0.311f};
     glm::mat3 hueMatrix{1.0f, 0.0f, 0.0f, 0.0f, U, W, 0.0f, -W, U};

@@ -1,11 +1,11 @@
 #pragma once
 
-#include <cstdint>
-#include <glm/glm.hpp>
-#include <unordered_map>
-
 #include "embed.h"
 #include "uniform.h"
+#include <cstdint>
+#include <glm/glm.hpp>
+#include <string>
+#include <unordered_map>
 
 namespace gpu {
 

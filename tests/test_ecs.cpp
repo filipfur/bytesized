@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "ecs.h"
+#include <string>
 
 struct Developer {
     float satisfaction;

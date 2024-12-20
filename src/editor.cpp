@@ -4,7 +4,7 @@
 #include <cstdio>
 
 static std::pair<glm::vec3, glm::vec3> _rightForward(float yaw) {
-    glm::vec3 v{cosf(yaw), 0.0f, sinf(yaw)};
+    glm::vec3 v{glm::cos(yaw), 0.0f, glm::sin(yaw)};
     glm::vec3 right = glm::cross(v, UP);
     glm::vec3 forward = glm::cross(UP, right);
     return {right, forward};
@@ -344,9 +344,9 @@ void Editor::update(float dt) {
 
 const glm::mat4 &Editor::view() {
     if (_dirtyView) {
-        glm::vec3 orientation{cosf(_currentView.yaw) * cosf(_currentView.pitch),
-                              sinf(_currentView.pitch),
-                              sinf(_currentView.yaw) * cosf(_currentView.pitch)};
+        glm::vec3 orientation{glm::cos(_currentView.yaw) * glm::cos(_currentView.pitch),
+                              glm::sin(_currentView.pitch),
+                              glm::sin(_currentView.yaw) * glm::cos(_currentView.pitch)};
         _view = glm::lookAt(_currentView.center + orientation * _currentView.distance,
                             _currentView.center, UP);
         _dirtyView = false;

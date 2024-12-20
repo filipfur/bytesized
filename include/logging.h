@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
 #define LOG_LVL_OFF 0
 #define LOG_LVL_ERROR 1

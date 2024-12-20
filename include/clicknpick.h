@@ -2,6 +2,7 @@
 
 #include "gpu.h"
 #include "window.h"
+#include <cstring>
 
 struct IClickNPick {
     virtual bool nodeClicked(gpu::Node *node) = 0;
