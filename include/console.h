@@ -7,18 +7,15 @@
 namespace console {
 
 struct IConsole {
-    virtual void inputChanged(bool visible, const char *text) = 0;
-    virtual bool openSaveFile(const char *name) { return false; }
-    virtual bool saveSaveFile(const char *name) { return false; }
-    virtual bool openScene(size_t index) { return false; }
-    virtual bool openScene(const char *name) { return false; }
-    virtual bool selectNode(size_t index) { return false; }
+    virtual void inputChanged(bool /*visible*/, const char * /*text*/) = 0;
+    virtual bool openSaveFile(const char * /*name*/) { return false; }
+    virtual bool saveSaveFile(const char * /*name*/) { return false; }
+    virtual bool openScene(size_t /*index*/) { return false; }
+    virtual bool openScene(const char * /*name*/) { return false; }
+    virtual bool selectNode(size_t /*index*/) { return false; }
     virtual void listNodes() {}
-    virtual bool spawnNode(const char *name) { return false; }
-    virtual void quit(bool force) {}
-    /*virtual void transform(float x, float y, float z) {}
-    virtual void rotate(float x, float y, float z) {}
-    virtual void scale(float x, float y, float z) {}*/
+    virtual bool spawnNode(const char * /*name*/) { return false; }
+    virtual void quit(bool /*force*/) {}
 };
 
 enum class Mode { TRANSLATE, ROTATE, SCALE };

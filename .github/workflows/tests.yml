@@ -1,0 +1,22 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: sudo apt-get install cmake clang libglew-dev libsdl2-dev libgtest-dev
+
+    - name: Build and test
+      run: |
+        cmake -B build && cmake --build build && ctest --test-dir build --rerun-failed --output-on-failure

@@ -312,7 +312,7 @@ struct GLBJsonStream : public JsonStream {
             break;
         }
     }
-    virtual void value(const std::string_view &parent, const std::string_view &key,
+    virtual void value(const std::string_view & /*parent*/, const std::string_view &key,
                        const std::string_view &val) override {
         if (key == "name") {
             switch (state) {

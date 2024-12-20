@@ -20,6 +20,11 @@ add_executable(my_app main.cpp app.cpp)
 target_link_libraries(my_app PUBLIC bytesized)
 ```
 
+## Run tests
+How to run the unit tests.
+
+`cmake -B build && cmake --build build && ctest --test-dir build --rerun-failed --output-on-failure`
+
 ## Features
 This section aims to keep track of features both completed and under development.
 

@@ -184,7 +184,7 @@ bool console::Console::keyDown(int key, int mods) {
     return false;
 }
 
-bool console::Console::keyUp(int key, int mods) { return false; }
+bool console::Console::keyUp(int /*key*/, int /*mods*/) { return false; }
 
 bool console::Console::textInput(const char *text) {
     if (visible) {

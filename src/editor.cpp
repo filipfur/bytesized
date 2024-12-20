@@ -1,10 +1,7 @@
 #include "editor.h"
 
-#define GLM_ENABLE_EXPERIMENTAL
-
+#include "primer.h"
 #include <cstdio>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtx/euler_angles.hpp>
 
 static std::pair<glm::vec3, glm::vec3> _rightForward(float yaw) {
     glm::vec3 v{cosf(yaw), 0.0f, sinf(yaw)};
@@ -20,15 +17,6 @@ HistoricEvent &Editor::emplaceHistoricEvent(HistoricEvent::Type type) {
     return hist;
 }
 
-inline static glm::vec3 eulerDegrees(const glm::quat &q) {
-    /*
-    float y, p, r;
-    glm::extractEulerAngleYXZ(glm::mat4_cast(q), y, p, r);
-    return glm::vec3{p, y, r};
-    */
-    return glm::eulerAngles(q) / glm::pi<float>() * 180.0f;
-}
-
 template <typename T> static T applyStep(T x, float step) {
     return step < FLT_EPSILON ? x : glm::round(x / step) * step;
 }
@@ -41,7 +29,7 @@ void Editor::_resetHistoric() {
         break;
     case HistoricEvent::ROTATE:
         _selectedNode->rotation = historicEvents.back().rotation;
-        _rotation = eulerDegrees(historicEvents.back().rotation);
+        _rotation = primer::eulerDegrees(historicEvents.back().rotation);
         break;
     case HistoricEvent::SCALE:
         _selectedNode->scale = historicEvents.back().scale;
@@ -91,7 +79,7 @@ bool Editor::undo_redo(std::list<HistoricEvent> &eventsListA,
     return true;
 }
 
-bool Editor::mouseDown(int button, int x, int y) {
+bool Editor::mouseDown(int /*button*/, int /*x*/, int /*y*/) {
     if (_editMode != EditMode::NONE) {
         _editMode = EditMode::NONE;
         _editAxis = EditAxis::NONE;
@@ -99,9 +87,9 @@ bool Editor::mouseDown(int button, int x, int y) {
     }
     return false;
 }
-bool Editor::mouseUp(int button, int x, int y) { return false; }
+bool Editor::mouseUp(int /*button*/, int /*x*/, int /*y*/) { return false; }
 
-bool Editor::mouseMoved(float x, float y, float xrel, float yrel) {
+bool Editor::mouseMoved(float /*x*/, float /*y*/, float xrel, float yrel) {
     if (_selectedNode == nullptr) {
         return false;
     }
@@ -246,7 +234,7 @@ bool Editor::keyDown(int key, int mods) {
             undo_redo(futureEvents, historicEvents);
         } else if (_selectedNode) {
             _editMode = EditMode::ROTATE;
-            _rotation = eulerDegrees(_selectedNode->rotation.data());
+            _rotation = primer::eulerDegrees(_selectedNode->rotation.data());
             auto &ev = emplaceHistoricEvent(HistoricEvent::ROTATE);
             ev.nodes.emplace_back(_selectedNode);
             ev.rotation = _selectedNode->rotation.data();
@@ -344,7 +332,7 @@ bool Editor::keyDown(int key, int mods) {
     return false;
 }
 
-bool Editor::keyUp(int key, int mods) { return false; }
+bool Editor::keyUp(int /*key*/, int /*mods*/) { return false; }
 
 void Editor::update(float dt) {
     _currentView.yaw = glm::mix(_currentView.yaw, _targetView.yaw, 4.0f * dt);

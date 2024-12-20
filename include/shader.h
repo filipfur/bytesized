@@ -23,7 +23,7 @@ struct ShaderProgram {
     void use();
 };
 
-bool Shader_compile(uint32_t type, const gpu::Shader &id, const char *src);
+bool Shader_compile(const gpu::Shader &id, const char *src);
 void Shader_createProgram(ShaderProgram &shaderProgram);
 
 #define __BUILTINSHADERS                                                                           \

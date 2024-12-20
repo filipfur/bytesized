@@ -60,6 +60,12 @@ struct TRS {
         _valid = true;
     }
 
+    const glm::vec3 &t() { return translation.data(); }
+
+    const glm::quat &r() { return rotation.data(); }
+
+    const glm::vec3 &s() { return scale.data(); }
+
     void invalidate() { _valid = false; }
     bool valid() const { return _valid; }
 

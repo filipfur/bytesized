@@ -88,7 +88,7 @@ struct ClickNPick : public window::IMouseListener, public window::IMouseMotionLi
         glViewport(vp[0], vp[1], vp[2], vp[3]);
     }
 
-    bool mouseDown(int button, int x, int y) override {
+    bool mouseDown(int /*button*/, int /*x*/, int /*y*/) override {
         if (objectId > 0) {
             auto *clicked = nodes[objectId - 1];
             assert(clicked);
@@ -96,8 +96,8 @@ struct ClickNPick : public window::IMouseListener, public window::IMouseMotionLi
         }
         return false;
     }
-    bool mouseUp(int button, int x, int y) override { return false; }
-    bool mouseMoved(float x, float y, float xrel, float yrel) override {
+    bool mouseUp(int /*button*/, int /*x*/, int /*y*/) override { return false; }
+    bool mouseMoved(float x, float y, float /*xrel*/, float /*yrel*/) override {
         mx = x;
         my = _height - y;
         return false;

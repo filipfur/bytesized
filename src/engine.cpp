@@ -92,7 +92,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
 
     for (size_t prim{gpu::PLANE}; prim < (size_t)gpu::PRIMITIVE_COUNT; ++prim) {
         gpu::Node *node = builtinCollection.scene->nodes.emplace_back(gpu::createNode());
-        node->visible = true;
+        node->hidden = false;
         node->mesh = gpu::createMesh();
         node->mesh->primitives.emplace_back(gpu::builtinPrimitive((gpu::BuiltinPrimitive)prim),
                                             gpu::builtinMaterial(gpu::CHECKERS));
@@ -108,7 +108,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     }
 
     grid = gpu::createNode();
-    grid->visible = false;
+    grid->hidden = true;
     grid->mesh = gpu::createMesh();
     grid->mesh->primitives.emplace_back(gpu::builtinPrimitive(gpu::GRID),
                                         gpu::builtinMaterial(gpu::GRID_TILE));
@@ -151,12 +151,12 @@ static void _renderNodes(Editor &editor, gpu::ShaderProgram *shaderProgram,
         mat->color = Color(0x44AAFF) * Color::opacity(0.4f);
         gpu::setOverrideMaterial(mat);
         sel->render(shaderProgram);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        mat->color = Color(0x88CCFF) * Color::opacity(0.6f);
+        mat->color = Color(0x44FFAA) * Color::opacity(0.7f);
+        sel->recursive([](gpu::Node *node) { node->wireframe = true; });
         sel->render(shaderProgram);
+        sel->recursive([](gpu::Node *node) { node->wireframe = false; });
         gpu::setOverrideMaterial(nullptr);
         glDisable(GL_BLEND);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glEnable(GL_DEPTH_TEST);
     }
 }
@@ -219,10 +219,10 @@ void Engine::draw() {
     //_clickNPick.fbo->textures.at(GL_COLOR_ATTACHMENT0)->bind();
 
     screenProgram->use();
-    gpu::builtinPrimitive(gpu::BuiltinPrimitive::SCREEN)->render(screenProgram);
+    gpu::builtinPrimitive(gpu::BuiltinPrimitive::SCREEN)->render();
 }
 
-bool Engine::keyDown(int key, int mods) {
+bool Engine::keyDown(int key, int /*mods*/) {
     switch (key) {
     case SDLK_1:
     case SDLK_2:
@@ -238,10 +238,10 @@ bool Engine::keyDown(int key, int mods) {
     case SDLK_b:
         if (_blockMode) {
             _console.setSetting("tstep", "0");
-            grid->visible = false;
+            grid->hidden = true;
         } else {
             _console.setSetting("tstep", "1");
-            grid->visible = true;
+            grid->hidden = false;
         }
         _blockMode = !_blockMode;
         return true;
@@ -252,11 +252,11 @@ bool Engine::keyDown(int key, int mods) {
     return false;
 }
 
-bool Engine::keyUp(int key, int mods) { return false; }
+bool Engine::keyUp(int /*key*/, int /*mods*/) { return false; }
 
-void Engine::inputChanged(bool visible, const char *value) {
+void Engine::inputChanged(bool visible, const char * /*value*/) {
     auto *text = gui.setConsoleText(_console.commandLine);
-    text->node->visible = visible;
+    text->node->hidden = !visible;
 }
 
 void Engine::fps(float fps) { gui.setFps(fps); }

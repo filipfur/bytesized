@@ -16,7 +16,7 @@ gpu::Uniform *gpu::ShaderProgram::uniform(const char *key) {
     return &it->second;
 }
 
-bool gpu::Shader_compile(uint32_t type, const gpu::Shader &shader, const char *src) {
+bool gpu::Shader_compile(const gpu::Shader &shader, const char *src) {
     glShaderSource(shader.id, 1, &src, nullptr);
     glCompileShader(shader.id);
     GLint status{0};

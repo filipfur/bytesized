@@ -9,6 +9,7 @@
 #include "texture.h"
 #include "trs.h"
 #include "uniform.h"
+#include <functional>
 #include <glm/glm.hpp>
 
 namespace gpu {
@@ -28,7 +29,7 @@ struct Primitive {
     uint32_t *ebo;
     uint32_t count;
 
-    void render(ShaderProgram *shaderProgram);
+    void render();
 };
 
 struct UniformBuffer {
@@ -54,13 +55,18 @@ struct Node : TRS {
     const gltf::Node *gltfNode;
     Mesh *mesh;
     std::vector<Node *> children;
-    bool visible;
+    bool hidden;
     struct Skin *skin;
+    bool wireframe;
 
     void render(ShaderProgram *shaderProgram);
     Node *childByName(const char *name);
     const std::string &name() const;
     const std::string &meshName() const;
+
+    void addChild(gpu::Node *node);
+    void recursive(const std::function<void(gpu::Node *)> &callback);
+    void forEachChild(const std::function<void(gpu::Node *)> &callback);
 
     Primitive *primitive(size_t primitiveIndex = 0);
     Material *material(size_t primitiveIndex = 0);

@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 project(bytesized)
 
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(BYTESIZED_DIR ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
 set(BYTESIZED_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -42,9 +44,15 @@ add_library(bytesized
     src/gui.cpp
     src/engine.cpp
     src/primitive.cpp
+    src/collision_primitive.cpp
 )
 
 add_subdirectory(embed)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
 
 target_include_directories(bytesized PUBLIC glm gcem/include stb ${SDL2_INCLUDE_DIR} include)
 target_link_libraries(bytesized PUBLIC ${SDL2_LIBRARY} GLEW::GLEW bytesized_embed)

@@ -250,7 +250,7 @@ gpu::Text *gpu::createText(const bdf::Font &font, const char *txt, bool center) 
     mat->textures.emplace(GL_TEXTURE0, (gpu::Texture *)font.gpuInstance);
     mat->color = Color::white;
     text->node->mesh = MESHES.acquire();
-    text->node->visible = true;
+    text->node->hidden = false;
     gpu::Primitive *primitive = PRIMITIVES.acquire();
     text->node->mesh->primitives.emplace_back(primitive, mat);
     primitive->vao = VAOS.acquire();
@@ -372,7 +372,7 @@ gpu::Node *gpu::createNode(const gpu::Node &other) {
     node->translation = other.translation.data();
     node->rotation = other.rotation.data();
     node->scale = other.scale.data();
-    node->visible = other.visible;
+    node->hidden = other.hidden;
     assert(other.skin == nullptr);
     return node;
 }
@@ -395,7 +395,7 @@ gpu::Node *gpu::createNode(const gltf::Node &gltfNode) {
     node->translation = gltfNode.translation.data();
     node->rotation = gltfNode.rotation.data();
     node->scale = gltfNode.scale.data();
-    node->visible = true;
+    node->hidden = false;
     for (gltf::Node *gltfChild : gltfNode.children) {
         node->children.emplace_back(createNode(*gltfChild))->setParent(node);
         if (gltfChild->skin) {
@@ -530,7 +530,7 @@ void gpu::bindMaterial(gpu::ShaderProgram *shaderProgram, gpu::Material *materia
     }
 }
 
-void gpu::Primitive::render(ShaderProgram *shaderProgram) {
+void gpu::Primitive::render() {
     glBindVertexArray(*vao);
     glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, NULL);
     glBindVertexArray(0);
@@ -567,12 +567,18 @@ void gpu::Node::render(ShaderProgram *shaderProgram) {
     for (gpu::Node *child : children) {
         child->render(shaderProgram);
     }
-    if (visible && mesh && !mesh->primitives.empty()) {
+    if (wireframe) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    }
+    if (!hidden && mesh && !mesh->primitives.empty()) {
         shaderProgram->uniforms.at("u_model") << model();
         for (auto &[primitive, material] : mesh->primitives) {
             bindMaterial(shaderProgram, _overrideMaterial ? _overrideMaterial : material);
-            primitive->render(shaderProgram);
+            primitive->render();
         }
+    }
+    if (wireframe) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
 }
 
@@ -595,6 +601,21 @@ const std::string &gpu::Node::name() const {
 const std::string &gpu::Node::meshName() const {
     static const std::string noname{"noname"};
     return (mesh && mesh->gltfMesh) ? mesh->gltfMesh->name : noname;
+}
+
+void gpu::Node::addChild(gpu::Node *node) { children.emplace_back(node)->setParent(this); }
+
+void gpu::Node::recursive(const std::function<void(gpu::Node *)> &callback) {
+    callback(this);
+    for (gpu::Node *child : children) {
+        child->recursive(callback);
+    }
+}
+
+void gpu::Node::forEachChild(const std::function<void(gpu::Node *)> &callback) {
+    for (gpu::Node *child : children) {
+        callback(child);
+    }
 }
 
 gpu::Primitive *gpu::Node::primitive(size_t primitiveIndex) {
@@ -668,7 +689,7 @@ void gpu::UniformBuffer::bufferSubData(uint32_t offset, uint32_t length, void *d
 gpu::Shader *gpu::createShader(uint32_t type, const char *src) {
     gpu::Shader *shader = SHADERS.acquire();
     shader->id = glCreateShader(type);
-    if (!Shader_compile(type, *shader, src)) {
+    if (!Shader_compile(*shader, src)) {
         glDeleteShader(shader->id);
         SHADERS.free(shader);
         return nullptr;

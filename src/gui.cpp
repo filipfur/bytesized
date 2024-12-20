@@ -105,6 +105,6 @@ void GUI::setNodeInfo(const char *name, const char *mesh, const glm::vec3 &trans
 
 void GUI::showNodeInfo(bool visible) {
     for (size_t i{0}; i < NODE_INFO_COUNT; ++i) {
-        nodeInfoRows[i]->node->visible = visible;
+        nodeInfoRows[i]->node->hidden = !visible;
     }
 }
