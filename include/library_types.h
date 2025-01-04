@@ -5,7 +5,7 @@
 
 #include "trs.h"
 
-namespace gltf {
+namespace library {
 
 struct Buffer {
     const unsigned char *data;
@@ -31,7 +31,7 @@ struct Accessor {
 
 struct Image {
     std::string name;
-    gltf::Bufferview *view;
+    Bufferview *view;
 };
 
 struct TextureSampler {
@@ -55,9 +55,22 @@ struct Material {
 
 struct Primitive {
     enum Attribute { POSITION, NORMAL, TEXCOORD_0, JOINTS_0, WEIGHTS_0, COUNT };
+    std::pair<const glm::vec3 *, size_t> positions() const {
+        return {(glm::vec3 *)attributes[POSITION]->data(),
+                attributes[POSITION]->bufferView->length / sizeof(glm::vec3)};
+    }
+    std::pair<const glm::vec3 *, size_t> normals() const {
+        return {(glm::vec3 *)attributes[NORMAL]->data(),
+                attributes[NORMAL]->bufferView->length / sizeof(glm::vec3)};
+    }
+    std::pair<const glm::vec2 *, size_t> texcoords() const {
+        return {(glm::vec2 *)attributes[TEXCOORD_0]->data(),
+                attributes[TEXCOORD_0]->bufferView->length / sizeof(glm::vec2)};
+    }
     Accessor *attributes[COUNT];
     Accessor *indices;
     Material *material;
+    void *gpuInstance;
 };
 
 struct Mesh {
@@ -105,4 +118,4 @@ struct Animation {
     Sampler samplers[96];
 };
 
-} // namespace gltf
+} // namespace library

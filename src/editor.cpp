@@ -5,8 +5,8 @@
 
 static std::pair<glm::vec3, glm::vec3> _rightForward(float yaw) {
     glm::vec3 v{glm::cos(yaw), 0.0f, glm::sin(yaw)};
-    glm::vec3 right = glm::cross(v, UP);
-    glm::vec3 forward = glm::cross(UP, right);
+    glm::vec3 right = glm::cross(v, primer::UP);
+    glm::vec3 forward = glm::cross(primer::UP, right);
     return {right, forward};
 }
 
@@ -29,7 +29,7 @@ void Editor::_resetHistoric() {
         break;
     case HistoricEvent::ROTATE:
         _selectedNode->rotation = historicEvents.back().rotation;
-        _rotation = primer::eulerDegrees(historicEvents.back().rotation);
+        _rotation = historicEvents.back().rotation;
         break;
     case HistoricEvent::SCALE:
         _selectedNode->scale = historicEvents.back().scale;
@@ -97,42 +97,53 @@ bool Editor::mouseMoved(float /*x*/, float /*y*/, float xrel, float yrel) {
     switch (_editMode) {
     case EditMode::TRANSLATE:
         if (_editAxis != EditAxis::NONE) {
-            const glm::vec3 &axis = AXES[static_cast<size_t>(_editAxis) - 1];
-            _translation += axis *
-                            glm::dot(axis, (right * -xrel +
-                                            (_editAxis == EditAxis::Y ? -UP : forward) * yrel)) *
-                            0.05f;
+            const glm::vec3 &axis = primer::AXES[static_cast<size_t>(_editAxis) - 1];
+            _translation +=
+                axis *
+                glm::dot(axis, (right * -xrel +
+                                (_editAxis == EditAxis::Y ? -primer::UP : forward) * yrel)) *
+                0.05f;
         } else {
             _translation += (right * -xrel + forward * yrel) * 0.05f;
         }
         _selectedNode->translation = applyStep(_translation, _tstep);
         break;
     case EditMode::ROTATE:
-        if ((xrel * xrel) > FLT_EPSILON) {
-            const EditAxis ax = _editAxis == EditAxis::NONE ? EditAxis::Y : _editAxis;
-            const glm::vec3 &axis = AXES[static_cast<size_t>(ax) - 1];
-            /*const glm::vec3 rotv = right * -yrel + (ax == EditAxis::Y ? -UP : forward) * xrel;
-            if (glm::length(rotv) > 4.0f) {
-                break;
-            }*/
-            _rotation += axis * xrel;
-            // axis * glm::dot(axis, (right * -yrel + (ax == EditAxis::Y ? -UP : forward) * xrel));
-            _rotation.x = _rotation.x > +180.0f ? _rotation.x - 360.0f : _rotation.x;
-            _rotation.x = _rotation.x < -180.0f ? _rotation.x + 360.0f : _rotation.x;
-            _rotation.y = _rotation.y > +180.0f ? _rotation.y - 360.0f : _rotation.y;
-            _rotation.y = _rotation.y < -180.0f ? _rotation.y + 360.0f : _rotation.y;
-            _rotation.z = _rotation.z > +180.0f ? _rotation.z - 360.0f : _rotation.z;
-            _rotation.z = _rotation.z < -180.0f ? _rotation.z + 360.0f : _rotation.z;
-
-            const glm::vec3 rot = applyStep(_rotation, _rstep);
-            _selectedNode->rotation = glm::angleAxis(glm::radians(rot.x), AXIS_X) *
-                                      glm::angleAxis(glm::radians(rot.y), AXIS_Y) *
-                                      glm::angleAxis(glm::radians(rot.z), AXIS_Z);
+        switch (_editAxis) {
+        case EditAxis::X:
+            _rotation *= glm::angleAxis(
+                glm::radians(glm::dot(primer::AXIS_Z, right * -xrel + forward * yrel)),
+                primer::AXIS_X);
+            break;
+        case EditAxis::Y:
+            _rotation *= glm::angleAxis(glm::radians(xrel), primer::AXIS_Y);
+            break;
+        case EditAxis::Z:
+            _rotation *= glm::angleAxis(
+                glm::radians(glm::dot(-primer::AXIS_X, right * -xrel + forward * yrel)),
+                primer::AXIS_Z);
+            break;
+        case EditAxis::NONE:
+            _rotation *= glm::angleAxis(glm::radians(xrel), primer::UP);
+            //_rotation *= glm::angleAxis(glm::radians(yrel), forward);
             break;
         }
+        _selectedNode->rotation = _rotation;
+        break;
         return false;
     case EditMode::SCALE:
-        _selectedNode->scale *= ((xrel - yrel) > 0 ? glm::vec3{1.0f / 0.9f} : glm::vec3{0.9f});
+        switch (_editAxis) {
+        case EditAxis::X:
+        case EditAxis::Y:
+        case EditAxis::Z:
+            _selectedNode->scale.data()[static_cast<size_t>(_editAxis) - 1] *=
+                ((xrel - yrel) > 0 ? 1.0f / 0.9f : 0.9f);
+            _selectedNode->invalidate();
+            break;
+        case EditAxis::NONE:
+            _selectedNode->scale *= ((xrel - yrel) > 0 ? glm::vec3{1.0f / 0.9f} : glm::vec3{0.9f});
+            break;
+        }
         break;
     default:
         return false;
@@ -166,24 +177,27 @@ bool Editor::mouseScrolled(float x, float y) {
     return true;
 }
 
-void Editor::addNode(gpu::Node *node) {
+gpu::Node *Editor::addNode(gpu::Node *node) {
     node->translation = _selectedNode ? _selectedNode->translation.data() : _targetView.center;
-    node->rotation =
-        _selectedNode ? _selectedNode->rotation.data() : glm::angleAxis(_currentView.yaw, UP);
+    node->rotation = _selectedNode ? _selectedNode->rotation.data()
+                                   : glm::angleAxis(_currentView.yaw, primer::UP);
     node->scale = _selectedNode ? _selectedNode->scale.data() : glm::vec3{1.0f, 1.0f, 1.0f};
     auto &ev = emplaceHistoricEvent(HistoricEvent::ADD);
     ev.nodes.emplace_back(node);
     _iEditor->nodeAdded(node);
+    return node;
 }
-void Editor::removeNode(gpu::Node *node) {
+gpu::Node *Editor::removeNode(gpu::Node *node) {
     auto &ev = emplaceHistoricEvent(HistoricEvent::REMOVE);
     ev.nodes.emplace_back(node);
     _iEditor->nodeRemoved(node);
+    return node;
 }
 
-void Editor::selectNode(gpu::Node *node) {
+gpu::Node *Editor::selectNode(gpu::Node *node) {
     _selectedNode = node;
     _iEditor->nodeSelected(_selectedNode);
+    return _selectedNode;
 }
 
 gpu::Node *Editor::startTranslation() {
@@ -234,7 +248,7 @@ bool Editor::keyDown(int key, int mods) {
             undo_redo(futureEvents, historicEvents);
         } else if (_selectedNode) {
             _editMode = EditMode::ROTATE;
-            _rotation = primer::eulerDegrees(_selectedNode->rotation.data());
+            _rotation = _selectedNode->rotation.data();
             auto &ev = emplaceHistoricEvent(HistoricEvent::ROTATE);
             ev.nodes.emplace_back(_selectedNode);
             ev.rotation = _selectedNode->rotation.data();
@@ -325,9 +339,11 @@ bool Editor::keyDown(int key, int mods) {
             _selectedNode = nullptr;
             _iEditor->nodeSelected(nullptr);
         } else {
-            exit(0);
+            break;
         }
         return true;
+    default:
+        break;
     }
     return false;
 }
@@ -348,37 +364,68 @@ const glm::mat4 &Editor::view() {
                               glm::sin(_currentView.pitch),
                               glm::sin(_currentView.yaw) * glm::cos(_currentView.pitch)};
         _view = glm::lookAt(_currentView.center + orientation * _currentView.distance,
-                            _currentView.center, UP);
+                            _currentView.center, primer::UP);
         _dirtyView = false;
     }
     return _view;
 }
 
-void Editor::translateSelected(const glm::vec3 &translation) {
+bool Editor::translateSelected(const glm::vec3 &translation) {
     if (_selectedNode) {
         auto &ev = emplaceHistoricEvent(HistoricEvent::TRANSLATE);
         ev.nodes.emplace_back(_selectedNode);
         ev.translation = _selectedNode->translation.data();
         _selectedNode->translation = translation;
+        _iEditor->nodeTransformed(_selectedNode);
+        return true;
     }
+    return false;
 }
 
-void Editor::rotateSelected(const glm::quat &rotation) {
+bool Editor::rotateSelected(const glm::quat &rotation) {
     if (_selectedNode) {
         auto &ev = emplaceHistoricEvent(HistoricEvent::ROTATE);
         ev.nodes.emplace_back(_selectedNode);
         ev.rotation = _selectedNode->rotation.data();
         _selectedNode->rotation = rotation;
+        _iEditor->nodeTransformed(_selectedNode);
+        return true;
     }
+    return false;
 }
 
-void Editor::scaleSelected(const glm::vec3 &scale) {
+bool Editor::scaleSelected(const glm::vec3 &scale) {
     if (_selectedNode) {
         auto &ev = emplaceHistoricEvent(HistoricEvent::SCALE);
         ev.nodes.emplace_back(_selectedNode);
         ev.scale = _selectedNode->scale.data();
         _selectedNode->scale = scale;
+        _iEditor->nodeTransformed(_selectedNode);
+        return true;
     }
+    return false;
+}
+
+bool Editor::hasHistory() { return !historicEvents.empty(); }
+
+void Editor::clearHistory() {
+    historicEvents.clear();
+    futureEvents.clear();
+}
+
+void Editor::enable() {
+    _enabled = true;
+    window::enableMouseListener(this);
+    window::enableMouseMotionListener(this);
+    window::enableMouseWheelListener(this);
+    window::enableKeyListener(this);
+}
+void Editor::disable() {
+    _enabled = false;
+    window::disableMouseListener(this);
+    window::disableMouseMotionListener(this);
+    window::disableMouseWheelListener(this);
+    window::disableKeyListener(this);
 }
 
 void Editor::setCurrentView(const CameraView &cameraView) { _currentView = cameraView; }

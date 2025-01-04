@@ -3,6 +3,8 @@
 #include <cstring>
 #include <string>
 
+Color rgb(uint8_t r, uint8_t g, uint8_t b) { return Color{r, g, b}; }
+
 static glm::vec3 rgbToHsv(const glm::vec3 &rgb) {
     float r = rgb.r, g = rgb.g, b = rgb.b;
     float max = std::max({r, g, b});
@@ -83,17 +85,17 @@ static glm::vec3 hsvToRgb(float h, float s, float v) {
     return {r, g, b};
 }
 
-float byteToDecimal(uint32_t hex, unsigned int pos) {
-    static constexpr float factor{1.0f / 255.0f};
-    return static_cast<float>((hex >> pos) & 0xFF) * factor;
-}
+float byteToDecimal(uint8_t hex) { return static_cast<float>(static_cast<double>(hex) / 255.0); }
 
 Color::Color() : _rgba{1.0f, 1.0f, 1.0f, 1.0} {}
 
 Color::Color(const std::string &hexstr) : Color{static_cast<uint32_t>(std::stoi(hexstr, 0, 16))} {}
 
 Color::Color(uint32_t hex, float alpha)
-    : _rgba{byteToDecimal(hex, 16), byteToDecimal(hex, 8), byteToDecimal(hex, 0), alpha} {}
+    : _rgba{byteToDecimal(hex >> 16), byteToDecimal(hex >> 8), byteToDecimal(hex), alpha} {}
+
+Color::Color(uint8_t r, uint8_t g, uint8_t b)
+    : _rgba{byteToDecimal(r), byteToDecimal(g), byteToDecimal(b), 1.0f} {}
 
 Color::Color(float r, float g, float b) : _rgba{r, g, b, 1.0f} {}
 

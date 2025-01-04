@@ -14,12 +14,13 @@ struct GUI {
     };
     void create(bdf::Font *font, float width, float height, float em, Options options);
 
-    void render(gpu::ShaderProgram *shaderProgram);
+    void render(gpu::ShaderProgram *frameProgram, gpu::ShaderProgram *textProgram);
 
     gpu::Text *setTitleText(const char *value);
     gpu::Text *setConsoleText(const char *value);
     gpu::Text *setFps(float fps);
-    void setNodeInfo(const char *name, const char *mesh, const glm::vec3 &translation,
+    void setNodeInfo(const char *scene, const char *name, const char *mesh,
+                     const char *componentInfo, const glm::vec3 &translation,
                      const glm::quat &rotation, const glm::vec3 &scale);
     void showNodeInfo(bool visible);
 
@@ -33,13 +34,18 @@ struct GUI {
     gpu::Text *titleText{nullptr};
     gpu::Text *consoleText{nullptr};
     gpu::Text *fpsText{nullptr};
+    gpu::Node *fpsFrame{nullptr};
+
     enum NodeInfoDetail {
-        NODE_INFO_NAME,
-        NODE_INFO_MESH,
+        NODE_INFO_TITLE,
+        NODE_INFO_COMPONENTS,
         NODE_INFO_TRANSLATION,
         NODE_INFO_ROTATION,
         NODE_INFO_SCALE,
         NODE_INFO_COUNT,
     };
     gpu::Text *nodeInfoRows[NODE_INFO_COUNT];
+
+    gpu::Node *consoleFrame{nullptr};
+    gpu::Node *nodeInfoFrame{nullptr};
 };

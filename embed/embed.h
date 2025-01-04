@@ -9,6 +9,15 @@ extern "C" {
 extern const char __bdf__boxxy[];
 extern const uint32_t __bdf__boxxy_len;
 
+extern const char __png__ui[];
+extern const uint32_t __png__ui_len;
+
+extern const char __png__console[];
+extern const uint32_t __png__console_len;
+
+extern const char __png__tframe[];
+extern const uint32_t __png__tframe_len;
+
 extern const char __shaders__vert_screen[];
 extern const char __shaders__vert_object[];
 extern const char __shaders__vert_anim[];

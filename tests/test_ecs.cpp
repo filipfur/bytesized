@@ -18,18 +18,18 @@ struct Gamer {
     bool isGaming;
 };
 
-typedef ecs::Component<Developer> CDeveloper;
-typedef ecs::Component<ProblemSolver> CProblemSolver;
-typedef ecs::Component<RustUser> CRustUser;
-typedef ecs::Component<Gamer> CGamer;
+typedef ecs::Component<Developer, 0> CDeveloper;
+typedef ecs::Component<ProblemSolver, 1> CProblemSolver;
+typedef ecs::Component<RustUser, 2> CRustUser;
+typedef ecs::Component<Gamer, 3> CGamer;
 
 TEST(TestECS, BasicSystem) {
-    ecs::Entity *jerry = ecs::create();
+    ecs::Entity *jerry = ecs::create_entity();
     ecs::attach<CDeveloper, CRustUser, CGamer>(jerry);
     CDeveloper::set({0.5f, 0.0f}, jerry);
     EXPECT_FLOAT_EQ(CDeveloper::get(jerry).satisfaction, 0.5f);
 
-    ecs::Entity *sally = ecs::create();
+    ecs::Entity *sally = ecs::create_entity();
     ecs::attach<CDeveloper, CProblemSolver>(sally);
 
     for (size_t i{0}; i < 100; ++i) {
@@ -67,12 +67,12 @@ struct DisplayName {
     char letter;
 };
 
-typedef ecs::Component<DisplayName> CDisplayName;
+typedef ecs::Component<DisplayName, 16> CDisplayName;
 
 TEST(TestECS, Combinations) {
-    ecs::Entity *A = ecs::create();
-    ecs::Entity *B = ecs::create();
-    ecs::Entity *C = ecs::create();
+    ecs::Entity *A = ecs::create_entity();
+    ecs::Entity *B = ecs::create_entity();
+    ecs::Entity *C = ecs::create_entity();
     CDisplayName::attach(A, B, C);
     CDisplayName::set({'A'}, A);
     CDisplayName::set({'B'}, B);

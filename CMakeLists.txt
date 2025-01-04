@@ -14,7 +14,7 @@ if (NOT BYTESIZED_LOG_LEVEL)
 endif()
 
 # -ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=
-add_compile_options(-Wall -Wextra -pedantic -Werror -DLOG_LEVEL=${BYTESIZED_LOG_LEVEL} -DBYTESIZED_DIR=${BYTESIZED_DIR})
+add_compile_options(-Wall -Wshadow -Wextra -pedantic -Werror -DLOG_LEVEL=${BYTESIZED_LOG_LEVEL} -DBYTESIZED_DIR=${BYTESIZED_DIR})
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(SDL2 REQUIRED)
@@ -42,9 +42,14 @@ add_library(bytesized
     src/console.cpp
     src/editor.cpp
     src/gui.cpp
+    src/physics.cpp
     src/engine.cpp
     src/primitive.cpp
-    src/collision_primitive.cpp
+    src/geom_primitive.cpp
+    src/polygonize.cpp
+    src/simplex_noise.cpp
+    src/geom_convexhull.cpp
+    src/geom_collision.cpp
 )
 
 add_subdirectory(embed)

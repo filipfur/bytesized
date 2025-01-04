@@ -16,6 +16,14 @@ assets::Collection::Collection(const library::Collection &collection)
     if (!animations.empty()) {
         animations.front()->start();
     }
+    assert(scene->libraryScene != nullptr);
+    assert(scene->libraryScene->gpuInstance == scene);
+    for (gpu::Node *node : scene->nodes) {
+        assert(node->libraryNode);
+        assert(node->libraryNode->gpuInstance != nullptr);
+        assert(node->libraryNode->scene == scene->libraryScene);
+        assert(node->libraryNode->scene != nullptr);
+    }
 }
 
 animation::Animation *assets::Collection::animationByName(const char *name) {
@@ -28,8 +36,8 @@ animation::Animation *assets::Collection::animationByName(const char *name) {
 }
 
 const std::string &assets::Collection::name() const {
-    if (scene && scene->gltfScene) {
-        return scene->gltfScene->name;
+    if (scene && scene->libraryScene) {
+        return scene->libraryScene->name;
     }
     static const std::string noname{};
     return noname;

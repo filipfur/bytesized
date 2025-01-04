@@ -41,7 +41,7 @@ struct Player {
     float time;
 };
 
-Animation *createAnimation(const gltf::Animation &animation);
+Animation *createAnimation(const library::Animation &animation);
 void freeAnimation(Animation *animation);
 
 Player *createPlayer(Animation *animation);

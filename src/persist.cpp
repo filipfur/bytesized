@@ -1,11 +1,24 @@
 #include "persist.h"
 
+#include "component.h"
 #include "filesystem.h"
-#include "gpu.h"
 #include "logging.h"
 #include <algorithm>
 #include <cassert>
 #include <list>
+
+static const size_t IPERSIST_MAX = 4;
+
+static persist::IPersist *_iPersist[IPERSIST_MAX] = {};
+
+void persist::registerIPersist(IPersist *iPersist) {
+    for (size_t i{0}; i < IPERSIST_MAX; ++i) {
+        if (_iPersist[i] == nullptr) {
+            _iPersist[i] = iPersist;
+            break;
+        }
+    }
+}
 
 void persist::storeSession(const SessionData &sessionData) {
     FILE *file = fopen("session.bin", "w");
@@ -55,15 +68,17 @@ void persist::close() {
     assert(_file);
     // fflush(_file);
     fclose(_file);
+    _file = nullptr;
 }
 
-void persist::saveWorld(const char *name, const SaveFile &saveFile) {
+void persist::saveWorld(const char *fpath, const SaveFile &saveFile) {
     std::vector<gpu::Scene *> scenes;
     std::vector<persist::Entity> entities(saveFile.nodes.size());
     size_t i{0};
     for (const auto &instance : saveFile.nodes) {
-        gpu::Scene *scene = (gpu::Scene *)instance->gltfNode->scene->gpuInstance;
-        assert(scene);
+        gpu::Scene *scene = nullptr;
+        assert(instance->libraryNode);
+        scene = (gpu::Scene *)instance->libraryNode->scene->gpuInstance;
         auto it = std::find(scenes.begin(), scenes.end(), scene);
         if (it == scenes.end()) {
             scenes.emplace_back(scene);
@@ -72,14 +87,14 @@ void persist::saveWorld(const char *name, const SaveFile &saveFile) {
         entities[i].sceneId = std::distance(scenes.begin(), it);
         auto &nodes = (*it)->nodes;
         int nid = -1;
-        for (size_t i{0}; i < nodes.size(); ++i) {
-            gpu::Node *node = nodes.at(i);
-            if (node->gltfNode == instance->gltfNode) {
-                nid = i;
+        for (size_t j{0}; j < nodes.size(); ++j) {
+            gpu::Node *node = nodes.at(j);
+            if (node->libraryNode == instance->libraryNode) {
+                nid = j;
                 break;
             }
         }
-        assert(instance->gltfNode);
+        // assert(instance->libraryNode);
         assert(nid != -1);
         entities[i].nodeId = nid;
         entities[i].translation = instance->translation.data();
@@ -87,11 +102,23 @@ void persist::saveWorld(const char *name, const SaveFile &saveFile) {
         entities[i].scale = instance->scale.data();
         entities[i].info = 0x0;
         entities[i].extra = 0x0;
+
+        for (size_t j{0}; j < IPERSIST_MAX; ++j) {
+            if (_iPersist[j] == nullptr || _iPersist[j]->saveNodeInfo(instance, entities[i].info)) {
+                break;
+            }
+        }
+        for (size_t j{0}; j < IPERSIST_MAX; ++j) {
+            if (_iPersist[j] == nullptr ||
+                _iPersist[j]->saveNodeExtra(instance, entities[i].extra)) {
+                break;
+            }
+        }
         ++i;
     }
-    persist::open(name);
+    persist::open(fpath);
     persist::World pw;
-    strcpy(pw.name, name);
+    strcpy(pw.name, fpath);
     pw.scenes = scenes.size();
     pw.entities = entities.size();
     pw.info = 0x0;
@@ -100,15 +127,15 @@ void persist::saveWorld(const char *name, const SaveFile &saveFile) {
     persist::Scene ps = {};
     persist::Node pn = {};
     for (gpu::Scene *scene : scenes) {
-        if (scene->gltfScene) {
-            strcpy(ps.name, scene->gltfScene->name.c_str());
+        if (scene->libraryScene) {
+            strcpy(ps.name, scene->libraryScene->name.c_str());
         }
         ps.nodes = scene->nodes.size();
         ps.info = 0x0;
         ps.extra = 0x0;
         persist::write(ps);
         for (gpu::Node *node : scene->nodes) {
-            strcpy(pn.name, node->gltfNode->name.c_str());
+            strcpy(pn.name, node->libraryNode->name.c_str());
             pn.info = 0x0;
             pn.extra = 0x0;
             persist::write(pn);
@@ -118,20 +145,47 @@ void persist::saveWorld(const char *name, const SaveFile &saveFile) {
     persist::close();
 }
 
-bool persist::loadWorld(const char *name, SaveFile &saveFile,
-                        const std::function<gpu::Scene *(const char *name)> &callback) {
-    if (persist::World *world = persist::load(name)) {
+bool persist::loadWorld(const char *fpath, SaveFile &saveFile) {
+    if (persist::World *world = persist::load(fpath)) {
         persist::Entity *entities = world->firstEntity();
         for (size_t i{0}; i < world->entities; ++i) {
             auto &e = entities[i];
             persist::Scene *scene = world->scene(e.sceneId);
             persist::Node *node = scene->node(e.nodeId);
-            gpu::Scene *gpuScene = callback(scene->name);
-            auto *inst = saveFile.nodes.emplace_back(
-                gpu::createNode(*gpuScene->nodeByName(node->name)->gltfNode));
-            inst->translation = e.translation;
-            inst->rotation = e.rotation;
-            inst->scale = e.scale;
+            gpu::Scene *gpuScene{nullptr};
+            for (size_t j{0}; j < IPERSIST_MAX; ++j) {
+                if (_iPersist[j] == nullptr) {
+                    break;
+                }
+                gpuScene = _iPersist[j]->loadedScene(scene->name);
+                if (gpuScene) {
+                    break;
+                }
+            }
+            if (gpuScene) {
+                if (auto gpuNode = gpuScene->nodeByName(node->name)) {
+                    auto *inst =
+                        saveFile.nodes.emplace_back(gpu::createNode(*gpuNode->libraryNode));
+                    inst->translation = e.translation;
+                    inst->rotation = e.rotation;
+                    inst->scale = e.scale;
+                    if (e.info != 0 || e.extra != 0) {
+                        ecs::Entity *entity = ecs::create_entity();
+                        inst->extra = entity;
+                        for (size_t j{0}; j < IPERSIST_MAX; ++j) {
+                            if (_iPersist[j] == nullptr) {
+                                break;
+                            }
+                            if (_iPersist[j]->loadedEntity(entity, inst, e.info, e.extra)) {
+                                // consumed
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    LOG_WARN("Failed to load node: %s\n", node->name);
+                }
+            }
         }
     }
     return false;

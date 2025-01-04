@@ -1,24 +1,30 @@
 #pragma once
 
-#include "gltf.hpp"
+#include "library_types.h"
 
 namespace library {
 
 struct Collection {
-    gltf::Scene *scene;
-    gltf::Animation *animations;
+    Scene *scene;
+    Animation *animations;
     uint32_t animations_count;
-    gltf::Node *nodes;
+    Node *nodes;
     uint32_t nodes_count;
-    gltf::Mesh *meshes;
+    Mesh *meshes;
     uint32_t meshes_count;
-    gltf::Material *materials;
+    Material *materials;
     uint32_t materials_count;
-    gltf::Texture *textures;
+    Texture *textures;
     uint32_t textures_count;
 };
 
-Collection *loadGLB(const unsigned char *glb);
+Collection *loadGLB(const unsigned char *glb, bool copyBuffers = false);
+Collection *createCollection(const char *name);
+Node *createNode();
+Mesh *createMesh();
+Accessor *createAccessor(const void *data, size_t count, size_t elemSize,
+                         library::Accessor::Type type, unsigned int componentType,
+                         unsigned int target);
 
 void print();
 

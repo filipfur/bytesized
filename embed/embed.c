@@ -8,6 +8,24 @@ const char __bdf__boxxy[] = {
 };
 const uint32_t __bdf__boxxy_len = sizeof __bdf__boxxy;
 
+const char __png__ui[] = {
+#embed "assets/ui.png"
+, '\0'
+};
+const uint32_t __png__ui_len = sizeof __png__ui;
+
+const char __png__console[] = {
+#embed "assets/console.png"
+, '\0'
+};
+const uint32_t __png__console_len = sizeof __png__console;
+
+const char __png__tframe[] = {
+#embed "assets/tframe.png"
+, '\0'
+};
+const uint32_t __png__tframe_len = sizeof __png__tframe;
+
 const char __shaders__vert_screen[] = {
 #embed "assets/shaders/screen.vert"
 , '\0'

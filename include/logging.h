@@ -26,7 +26,7 @@
 
 #if LOG_LEVEL > LOG_LVL_ERROR
 #define LOG_WARN(fmt, ...)                                                                         \
-    printf("W %s:%d " fmt "\n", __FILE__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
+    printf("W %s:%d " fmt "\n", __FILENAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_WARN(fmt, ...)                                                                         \
     do {                                                                                           \
@@ -35,7 +35,7 @@
 
 #if LOG_LEVEL > LOG_LVL_WARN
 #define LOG_INFO(fmt, ...)                                                                         \
-    printf("I %s:%d " fmt "\n", __FILE__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
+    printf("I %s:%d " fmt "\n", __FILENAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_INFO(fmt, ...)                                                                         \
     do {                                                                                           \
@@ -44,7 +44,7 @@
 
 #if LOG_LEVEL > LOG_LVL_INFO
 #define LOG_TRACE(fmt, ...)                                                                        \
-    printf("T %s:%d " fmt "\n", __FILE__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
+    printf("T %s:%d " fmt "\n", __FILENAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_TRACE(fmt, ...)                                                                        \
     do {                                                                                           \

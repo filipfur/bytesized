@@ -2,13 +2,15 @@
 
 #include "bdf.h"
 #include "color.h"
-#include "gltf.hpp"
+#include "library_types.h"
 #include "opengl.h"
 #include "recycler.hpp"
 #include "shader.h"
 #include "texture.h"
 #include "trs.h"
 #include "uniform.h"
+#include "vector.h"
+#include "vertexobject.h"
 #include <functional>
 #include <glm/glm.hpp>
 #include <string>
@@ -43,22 +45,23 @@ struct UniformBuffer {
     void unbind();
     void bindBlock(gpu::ShaderProgram *shader, const char *blockLabel);
     void bindBufferBase();
-    void bufferData(uint32_t length, void *data);
-    void bufferSubData(uint32_t offset, uint32_t length, void *data);
+    void bufferData(uint32_t length, void *data_);
+    void bufferSubData(uint32_t offset, uint32_t length_, void *data_);
 };
 
 struct Mesh {
-    const gltf::Mesh *gltfMesh;
+    const library::Mesh *libraryMesh;
     std::vector<std::pair<Primitive *, Material *>> primitives;
 };
 
 struct Node : TRS {
-    const gltf::Node *gltfNode;
+    const library::Node *libraryNode;
     Mesh *mesh;
     std::vector<Node *> children;
     bool hidden;
     struct Skin *skin;
     bool wireframe;
+    void *extra;
 
     void render(ShaderProgram *shaderProgram);
     Node *childByName(const char *name);
@@ -74,13 +77,13 @@ struct Node : TRS {
 };
 
 struct Skin {
-    const gltf::Skin *gltfSkin;
+    const library::Skin *librarySkin;
     std::vector<Node *> joints;
     std::vector<glm::mat4> invBindMatrices;
 };
 
 struct Scene {
-    const gltf::Scene *gltfScene;
+    const library::Scene *libraryScene;
     std::vector<Node *> nodes;
     Node *nodeByName(const char *name);
 };
@@ -120,21 +123,26 @@ void dispose();
 void setOverrideMaterial(gpu::Material *material);
 
 Mesh *createMesh();
-Primitive *createPrimitive(const void *vertices, size_t vertices_len, const uint16_t *indices,
-                           size_t indices_len);
+Mesh *createMesh(gpu::Primitive *primitive, gpu::Material *material = nullptr);
+Primitive *createPrimitive(const glm::vec3 *positions, const glm::vec3 *normals,
+                           const glm::vec2 *uvs, size_t vertex_count, const uint16_t *indices,
+                           size_t index_count);
+Primitive *createPrimitive(const VertexObject &vertexObject);
+
 enum BuiltinMaterial { CHECKERS, GRID_TILE, WHITE, MATERIAL_COUNT };
 Material *builtinMaterial(BuiltinMaterial builtinMaterial);
-enum BuiltinPrimitive { SCREEN, GRID, PLANE, CUBE, SPHERE, CYLINDER, CONE, PRIMITIVE_COUNT };
-Primitive *builtinPrimitive(BuiltinPrimitive builtinPrimitive);
+
+void renderScreen();
+void renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector);
 
 Framebuffer *createFramebuffer();
 void freeFramebuffer(Framebuffer *framebuffer);
 
 Texture *createTexture(const uint8_t *data, uint32_t width, uint32_t height,
                        ChannelSetting channels, uint32_t type);
-Texture *createTextureFromFile(const char *data);
-Texture *createTextureFromMem(const uint8_t *addr, uint32_t len);
-Texture *createTexture(const gltf::Texture &texture);
+Texture *createTextureFromFile(const char *data, bool flip);
+Texture *createTextureFromMem(const uint8_t *addr, uint32_t len, bool flip);
+Texture *createTexture(const library::Texture &texture);
 Texture *createTexture(const bdf::Font &font);
 
 Text *createText(const bdf::Font &font, const char *text, bool center);
@@ -143,16 +151,17 @@ void freeText(gpu::Text *text);
 void freeTexture(Texture *texture);
 
 Material *createMaterial();
-Material *createMaterial(const gltf::Material &material);
+Material *createMaterial(const library::Material &material);
 void freeMaterial(Material *material);
 
 Node *createNode();
+Node *createNode(gpu::Mesh *mesh);
 Node *createNode(const gpu::Node &other);
-Node *createNode(const gltf::Node &node);
+Node *createNode(const library::Node &node);
 void freeNode(gpu::Node *node);
 
 Scene *createScene();
-Scene *createScene(const gltf::Scene &scene);
+Scene *createScene(const library::Scene &scene);
 void freeScene(gpu::Scene *scene);
 
 UniformBuffer *createUniformBuffer(uint32_t bindingPoint, uint32_t len, void *data = NULL);

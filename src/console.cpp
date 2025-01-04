@@ -1,4 +1,5 @@
 #include "console.h"
+#include "dexterity.h"
 #include "gpu.h"
 #include "logging.h"
 #include "recycler.hpp"
@@ -18,8 +19,40 @@ enum ColorParameter {
     A = (1 << 2),
 };
 
-static bool starts_with(const char *text, const char *prefix) {
-    return strncmp(text, prefix, strlen(prefix)) == 0;
+static bool _parseTransform(const char *commandLine, glm::vec3 &axis, bool &apply, float &value) {
+    if (commandLine[2] == '.') {
+        switch (commandLine[3]) {
+        case 'x':
+        case 'X':
+            axis = glm::vec3{1, 0, 0};
+            break;
+        case 'y':
+        case 'Y':
+            axis = glm::vec3{0, 1, 0};
+            break;
+        case 'z':
+        case 'Z':
+            axis = glm::vec3{0, 0, 1};
+            break;
+        default:
+            return false;
+        }
+        if (commandLine[4] == '=') {
+            if (isdigit(commandLine[5]) || commandLine[5] == '-') {
+                value = atof(commandLine + 5);
+                apply = false;
+                return true;
+            }
+        } else if ((commandLine[4] == '+' || commandLine[4] == '-') && commandLine[5] == '=') {
+            if (isdigit(commandLine[6]) || commandLine[6] == '-') {
+                value = atof(commandLine + 6);
+                value = commandLine[4] == '+' ? value : -value;
+                apply = true;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 #ifdef DEXTERITY
@@ -35,8 +68,8 @@ static const char *trim(const char *str) {
 }
 #endif
 
-console::Setting *_findSetting(console::Setting *settings, const char *key) {
-    for (size_t i{0}; i < console::Console::SETTINGS_MAX; ++i) {
+Console::Setting *_findSetting(Console::Setting *settings, const char *key) {
+    for (size_t i{0}; i < Console::SETTINGS_MAX; ++i) {
         if (settings[i].key[0] == '\0') {
             break;
         }
@@ -47,7 +80,7 @@ console::Setting *_findSetting(console::Setting *settings, const char *key) {
     return nullptr;
 }
 
-bool console::Console::evaluate() {
+bool Console::evaluate() {
     if (starts_with(commandLine, ":set ")) {
         static char key[32];
         char *par = commandLine + strlen(":set ");
@@ -65,31 +98,51 @@ bool console::Console::evaluate() {
             LOG_INFO("Failed to find setting: %s", key);
         }
     } else if (starts_with(commandLine, ":list nodes")) {
-        iConsole->listNodes();
+        _iConsole->listNodes();
         return true;
     } else if (starts_with(commandLine, ":f ")) {
-        return iConsole->openSaveFile(commandLine + strlen(":f "));
+        return _iConsole->openSaveFile(commandLine + strlen(":f "));
     } else if (starts_with(commandLine, ":w ")) {
-        return iConsole->saveSaveFile(commandLine + strlen(":w "));
-
+        return _iConsole->saveSaveFile(commandLine + strlen(":w "));
+    } else if (starts_with(commandLine, ":t.") || starts_with(commandLine, ":r.") ||
+               starts_with(commandLine, ":s.")) {
+        glm::vec3 axis;
+        bool apply;
+        float value;
+        if (_parseTransform(commandLine, axis, apply, value)) {
+            switch (commandLine[1]) {
+            case 't':
+                return apply ? _iConsole->applyNodeTranslation(axis * value)
+                             : _iConsole->setNodeTranslation(axis * value);
+            case 'r':
+                return apply
+                           ? _iConsole->applyNodeRotation(glm::angleAxis(glm::radians(value), axis))
+                           : _iConsole->setNodeRotation(glm::angleAxis(glm::radians(value), axis));
+            case 's':
+                return apply ? _iConsole->applyNodeScale(glm::vec3{1.0f, 1.0f, 1.0f} +
+                                                         axis * (value - 1.0f))
+                             : _iConsole->setNodeScale(glm::vec3{1.0f, 1.0f, 1.0f} +
+                                                       axis * (value - 1.0f));
+            }
+        }
     } else if (starts_with(commandLine, ":wq")) {
-        if (iConsole->saveSaveFile(nullptr)) {
-            iConsole->quit(false);
+        if (_iConsole->saveSaveFile(nullptr)) {
+            _iConsole->quit(false);
         }
     } else if (starts_with(commandLine, ":q!")) {
-        iConsole->quit(true);
+        _iConsole->quit(true);
     } else if (starts_with(commandLine, ":q")) {
-        iConsole->quit(false);
+        _iConsole->quit(false);
     } else if (starts_with(commandLine, ":w")) {
-        return iConsole->saveSaveFile(nullptr);
+        return _iConsole->saveSaveFile(nullptr);
     } else if (starts_with(commandLine, ":spawn ")) {
-        return iConsole->spawnNode(commandLine + strlen(":spawn "));
+        return _iConsole->spawnNode(commandLine + strlen(":spawn "));
     } else if (starts_with(commandLine, ":o ")) {
         const char *par = commandLine + strlen(":o ");
         if (isdigit(par[0])) {
-            return iConsole->openScene(atoi(par));
+            return _iConsole->openScene(atoi(par));
         } else {
-            return iConsole->openScene(par);
+            return _iConsole->openScene(par);
         }
     } else {
         for (const auto &command : customCommands) {
@@ -97,26 +150,26 @@ bool console::Console::evaluate() {
                 break;
             }
             if (starts_with(commandLine, command.key)) {
-                command.callback(command.key);
-                break;
+                return command.callback(commandLine);
             }
         }
     }
     return false;
 }
 
-bool console::Console::keyDown(int key, int mods) {
+bool Console::keyDown(int key, int mods) {
     if (visible) {
         if (key == SDLK_RETURN) {
-            evaluate();
-            visible = false;
-            auto it = std::find(history.begin(), history.end(), std::string{commandLine});
-            if (it == history.end()) {
-                history.emplace_back(commandLine);
-            } else {
-                std::iter_swap(it, history.rbegin());
+            if (evaluate()) {
+                visible = false;
+                auto it = std::find(history.begin(), history.end(), std::string{commandLine});
+                if (it == history.end()) {
+                    history.emplace_back(commandLine);
+                } else {
+                    std::iter_swap(it, history.rbegin());
+                }
+                SDL_StopTextInput();
             }
-            SDL_StopTextInput();
         } else if (key == SDLK_ESCAPE) {
             visible = false;
             SDL_StopTextInput();
@@ -140,7 +193,7 @@ bool console::Console::keyDown(int key, int mods) {
                 if (historyIt != history.rend()) {
                     strcpy(commandLine, historyIt->c_str());
                     cursor = historyIt->length();
-                    iConsole->inputChanged(true, commandLine);
+                    _iConsole->inputChanged(true, commandLine);
                 }
             }
         } else if (key == SDLK_DOWN) {
@@ -150,10 +203,10 @@ bool console::Console::keyDown(int key, int mods) {
                 }
                 strcpy(commandLine, historyIt->c_str());
                 cursor = historyIt->length();
-                iConsole->inputChanged(true, commandLine);
+                _iConsole->inputChanged(true, commandLine);
             }
         }
-        iConsole->inputChanged(visible, commandLine);
+        _iConsole->inputChanged(visible, commandLine);
         return true;
     } else {
         if (key == SDLK_PERIOD) {
@@ -163,7 +216,7 @@ bool console::Console::keyDown(int key, int mods) {
                 cursor = 0;
                 std::memset(commandLine, 0, sizeof(commandLine));
                 commandLine[cursor++] = ':';
-                iConsole->inputChanged(true, commandLine);
+                _iConsole->inputChanged(true, commandLine);
                 historyIt = history.rend();
             } else {
                 if (cursor > 0) {
@@ -178,24 +231,24 @@ bool console::Console::keyDown(int key, int mods) {
                 historyIt = history.rbegin();
                 strcpy(commandLine, historyIt->c_str());
                 cursor = historyIt->length();
-                iConsole->inputChanged(true, commandLine);
+                _iConsole->inputChanged(true, commandLine);
             }
         }
     }
     return false;
 }
 
-bool console::Console::keyUp(int /*key*/, int /*mods*/) { return false; }
+bool Console::keyUp(int /*key*/, int /*mods*/) { return false; }
 
-bool console::Console::textInput(const char *text) {
+bool Console::textInput(const char *text) {
     if (visible) {
         commandLine[cursor++] = *text;
-        iConsole->inputChanged(true, text);
+        _iConsole->inputChanged(true, text);
     }
     return false;
 }
 
-void console::Console::addCustomCommand(const char *key, const Callback &callback) {
+void Console::addCustomCommand(const char *key, const Callback &callback) {
     for (size_t i{0}; i < CUSTOM_COMMAND_MAX; ++i) {
         if (customCommands[i].key == nullptr) {
             customCommands[i].key = key;
@@ -205,7 +258,7 @@ void console::Console::addCustomCommand(const char *key, const Callback &callbac
     }
 }
 
-void console::Console::setSetting(const char *key, const char *value) {
+void Console::setSetting(const char *key, const char *value) {
     for (size_t i{0}; i < SETTINGS_MAX; ++i) {
         if (strcmp(settings[i].key, key) == 0) {
             strncpy(settings[i].value, value, strlen(value));
@@ -219,14 +272,14 @@ void console::Console::setSetting(const char *key, const char *value) {
     }
 }
 
-bool console::Console::settingBool(const char *key) {
+bool Console::settingBool(const char *key) {
     if (auto *setting = _findSetting(settings, key)) {
         return (strcmp(setting->value, "1") == 0) || (strcmp(setting->value, "true") == 0);
     }
     return false;
 }
 
-int console::Console::settingInt(const char *key) {
+int Console::settingInt(const char *key) {
     if (auto *setting = _findSetting(settings, key)) {
         if (isdigit(setting->value[0]) || setting->value[0] == '-') {
             return atoi(setting->value);
@@ -235,7 +288,7 @@ int console::Console::settingInt(const char *key) {
     return 0;
 }
 
-float console::Console::settingFloat(const char *key) {
+float Console::settingFloat(const char *key) {
     if (auto *setting = _findSetting(settings, key)) {
         if (isdigit(setting->value[0]) || setting->value[0] == '-') {
             return atof(setting->value);
@@ -244,11 +297,11 @@ float console::Console::settingFloat(const char *key) {
     return 0;
 }
 
-const char *console::Console::settingString(const char *key) {
+const char *Console::settingString(const char *key) {
     if (auto *setting = _findSetting(settings, key)) {
         return setting->value;
     }
     return "";
 }
 
-void console::Console::registerIConsole(IConsole *iConsole) { this->iConsole = iConsole; }
+void Console::registerIConsole(IConsole *iConsole) { this->_iConsole = iConsole; }

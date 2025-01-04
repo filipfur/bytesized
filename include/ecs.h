@@ -11,18 +11,16 @@ namespace ecs {
 
 using Entity = uint32_t;
 
-Entity *create();
+Entity *create_entity();
 void free(Entity *entity);
 
 uint32_t ID(const Entity *entity);
 
 recycler<Entity, ECS_MAX_ENTITIES> &entities();
 
-extern uint32_t _nextComponentNumber;
-
 static inline bool has(const Entity *entity, uint32_t mask) { return (*entity & mask) == mask; }
 
-template <class T, uint32_t Variant = 0, bool Static = false> class Component {
+template <class T, uint32_t Id, bool Static = false> class Component {
   public:
     using value_type = T;
 
@@ -40,6 +38,12 @@ template <class T, uint32_t Variant = 0, bool Static = false> class Component {
     static void detach(Entity *entity) { *entity &= ~bit_mask(); }
 
     static T &get(const Entity *entity) { return Static ? _ts[0] : _ts[ID(entity)]; }
+    static T *get_pointer(const Entity *entity) {
+        if (Static) {
+            return &_ts[0];
+        }
+        return has(entity) ? &_ts[ID(entity)] : nullptr;
+    }
 
     static void set(const T &t, const Entity *entity) {
         if (Static) {
@@ -60,11 +64,10 @@ template <typename... T> void attach(Entity *entity) {
     (T::attach(entity), ...); // fold expression
 }
 
-template <class T, uint32_t Variant, bool Static>
-T Component<T, Variant, Static>::_ts[Static ? 1 : ECS_MAX_ENTITIES] = {};
+template <class T, uint32_t Id, bool Static>
+T Component<T, Id, Static>::_ts[Static ? 1 : ECS_MAX_ENTITIES] = {};
 
-template <class T, uint32_t Variant, bool Static>
-uint32_t Component<T, Variant, Static>::_id{_nextComponentNumber++};
+template <class T, uint32_t Id, bool Static> uint32_t Component<T, Id, Static>::_id{Id};
 
 template <class... T> class System {
   public:
@@ -77,6 +80,35 @@ template <class... T> class System {
                 (callback(entity, T::get(entity)...));
             }
         }
+    }
+
+    /// @brief for every until condition met
+    static bool until(std::function<bool(ecs::Entity *, typename T::value_type &...)> callback) {
+        auto mask = System<T...>::mask();
+        auto &entities = ecs::entities();
+        for (size_t i{0}; i < entities.count(); ++i) {
+            Entity *entity = entities.data() + i;
+            if (ecs::has(entity, mask)) {
+                if (callback(entity, T::get(entity)...)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static ecs::Entity *find(std::function<bool(typename T::value_type &...)> callback) {
+        auto mask = System<T...>::mask();
+        auto &entities = ecs::entities();
+        for (size_t i{0}; i < entities.count(); ++i) {
+            Entity *entity = entities.data() + i;
+            if (ecs::has(entity, mask)) {
+                if (callback(T::get(entity)...)) {
+                    return entity;
+                }
+            }
+        }
+        return nullptr;
     }
 
     /// @brief ordered means permuations, unordered means combinations

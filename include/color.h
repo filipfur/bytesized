@@ -1,6 +1,7 @@
 #pragma once
 
 #include "glm/glm.hpp"
+#include <cstdint>
 #include <string>
 
 class Color {
@@ -8,6 +9,7 @@ class Color {
     Color();
     Color(const std::string &hexstr);
     Color(uint32_t hex, float alpha = 1.0f);
+    Color(uint8_t r, uint8_t g, uint8_t b);
     Color(float r, float g, float b);
     Color(float r, float g, float b, float a);
     Color(const glm::vec3 &rgb);
@@ -45,3 +47,5 @@ class Color {
   private:
     glm::vec4 _rgba{1.0f, 1.0f, 1.0f, 1.0f};
 };
+
+Color rgb(uint8_t r, uint8_t g, uint8_t b);

@@ -9,7 +9,7 @@ static recycler<animation::Animation, ANIMATION__COUNT> ANIMATIONS = {};
 static recycler<animation::Player, ANIMATION__PLAYER_COUNT> PLAYERS = {};
 bool animation::SETTINGS_LERP{true};
 
-animation::Animation *animation::createAnimation(const gltf::Animation &anim) {
+animation::Animation *animation::createAnimation(const library::Animation &anim) {
     auto rval = ANIMATIONS.acquire();
     rval->startTime = FLT_MAX;
     rval->endTime = -FLT_MAX;
@@ -22,7 +22,7 @@ animation::Animation *animation::createAnimation(const gltf::Animation &anim) {
             gpu::Node *targetNode = (gpu::Node *)channel.targetNode->gpuInstance;
             rval->name = anim.name;
             switch (channel.type) {
-            case gltf::Channel::TRANSLATION:
+            case library::Channel::TRANSLATION:
                 rval->channels[targetNode][animation::Animation::CH_TRANSLATION].frames.resize(
                     channel.sampler->input->count);
                 rval->channels[targetNode][animation::Animation::CH_TRANSLATION].current =
@@ -44,7 +44,7 @@ animation::Animation *animation::createAnimation(const gltf::Animation &anim) {
                         .v3.z = v3p[k].z;
                 }
                 break;
-            case gltf::Channel::ROTATION:
+            case library::Channel::ROTATION:
                 rval->channels[targetNode][animation::Animation::CH_ROTATION].frames.resize(
                     channel.sampler->input->count);
                 rval->channels[targetNode][animation::Animation::CH_ROTATION].current =
@@ -65,7 +65,7 @@ animation::Animation *animation::createAnimation(const gltf::Animation &anim) {
                         v4p[k].w;
                 }
                 break;
-            case gltf::Channel::SCALE:
+            case library::Channel::SCALE:
                 rval->channels[targetNode][animation::Animation::CH_SCALE].frames.resize(
                     channel.sampler->input->count);
                 rval->channels[targetNode][animation::Animation::CH_SCALE].current =
@@ -83,7 +83,7 @@ animation::Animation *animation::createAnimation(const gltf::Animation &anim) {
                         v3p[k].z;
                 }
                 break;
-            case gltf::Channel::NONE:
+            case library::Channel::NONE:
                 LOG_ERROR("Unknown animation channel");
                 break;
             }

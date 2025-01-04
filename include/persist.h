@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cameraview.h"
+#include "ecs.h"
 #include "gpu.h"
 #include <cstddef>
 #include <cstdint>
@@ -9,6 +10,16 @@
 #include <glm/gtc/quaternion.hpp>
 
 namespace persist {
+
+struct IPersist {
+    virtual bool saveNodeInfo(gpu::Node *node, uint32_t &info) = 0;
+    virtual bool saveNodeExtra(gpu::Node *node, uint32_t &extra) = 0;
+    virtual gpu::Scene *loadedScene(const char *name) = 0;
+    virtual bool loadedEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info,
+                              uint32_t extra) = 0;
+};
+
+void registerIPersist(IPersist *iPersist);
 
 struct Entity {
     uint16_t sceneId;
@@ -84,8 +95,7 @@ struct SaveFile {
     std::vector<gpu::Node *> nodes;
     bool dirty;
 };
-void saveWorld(const char *name, const SaveFile &saveFile);
-bool loadWorld(const char *name, SaveFile &saveFile,
-               const std::function<gpu::Scene *(const char *name)> &callback);
+void saveWorld(const char *fpath, const SaveFile &saveFile);
+bool loadWorld(const char *fpath, SaveFile &saveFile);
 
 } // namespace persist

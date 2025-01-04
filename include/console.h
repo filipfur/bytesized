@@ -2,10 +2,9 @@
 
 #include "window.h"
 #include <functional>
+#include <glm/glm.hpp>
 #include <list>
 #include <string>
-
-namespace console {
 
 struct IConsole {
     virtual void inputChanged(bool /*visible*/, const char * /*text*/) = 0;
@@ -16,23 +15,27 @@ struct IConsole {
     virtual bool selectNode(size_t /*index*/) { return false; }
     virtual void listNodes() {}
     virtual bool spawnNode(const char * /*name*/) { return false; }
+    virtual bool setNodeTranslation(const glm::vec3 &) { return false; }
+    virtual bool setNodeRotation(const glm::quat &) { return false; }
+    virtual bool setNodeScale(const glm::vec3 &) { return false; }
+    virtual bool applyNodeTranslation(const glm::vec3 &) { return false; }
+    virtual bool applyNodeRotation(const glm::quat &) { return false; }
+    virtual bool applyNodeScale(const glm::vec3 &) { return false; }
     virtual void quit(bool /*force*/) {}
 };
 
-enum class Mode { TRANSLATE, ROTATE, SCALE };
-
-using Callback = std::function<void(const char *key)>;
-struct CustomCommand {
-    const char *key;
-    Callback callback;
-};
-
-struct Setting {
-    char key[32];
-    char value[64];
-};
-
 struct Console : public window::IKeyListener, window::ITextListener {
+
+    using Callback = std::function<bool(const char *key)>;
+    struct CustomCommand {
+        const char *key;
+        Callback callback;
+    };
+
+    struct Setting {
+        char key[32];
+        char value[64];
+    };
 
     Console() {
         window::registerKeyListener(this);
@@ -56,7 +59,7 @@ struct Console : public window::IKeyListener, window::ITextListener {
 
     bool evaluate();
 
-    IConsole *iConsole{nullptr};
+    IConsole *_iConsole{nullptr};
     char commandLine[256] = {};
     std::list<std::string> history;
     std::list<std::string>::reverse_iterator historyIt;
@@ -67,5 +70,3 @@ struct Console : public window::IKeyListener, window::ITextListener {
     static const size_t SETTINGS_MAX{50};
     Setting settings[SETTINGS_MAX] = {};
 };
-
-} // namespace console

@@ -2,12 +2,13 @@
 
 #include "json.hpp"
 #include "logging.h"
+#include <list>
 
 #define GLB_MAGIC 0x46546C67
 #define GLB_CHUNK_TYPE_JSON 0x4E4F534A
 #define GLB_CHUNK_TYPE_BIN 0x004E4942
 
-#define LIBRARY__BUFFER_COUNT 10
+#define LIBRARY__BUFFER_COUNT 50
 #define LIBRARY__BUFFER_VIEW_COUNT 1000
 #define LIBRARY__ACCESSOR_COUNT 1000
 #define LIBRARY__TEXTURESAMPLER_COUNT 100
@@ -17,24 +18,24 @@
 #define LIBRARY__SKIN_COUNT 10
 #define LIBRARY__MESH_COUNT 100
 #define LIBRARY__NODE_COUNT 200
-#define LIBRARY__SCENE_COUNT 10
+#define LIBRARY__SCENE_COUNT 20
 #define LIBRARY__SAMPLER_COUNT 20
 #define LIBRARY__CHANNEL_COUNT 20
 #define LIBRARY__ANIMATION_COUNT 20
-#define LIBRARY__COLLECTION_COUNT 10
+#define LIBRARY__COLLECTION_COUNT 50
 
-static gltf::Buffer BUFFERS[LIBRARY__BUFFER_COUNT] = {};
-static gltf::Bufferview BUFFERVIEWS[LIBRARY__BUFFER_VIEW_COUNT] = {};
-static gltf::Accessor ACCESSORS[LIBRARY__ACCESSOR_COUNT] = {};
-static gltf::TextureSampler TEXTURESAMPLERS[LIBRARY__TEXTURESAMPLER_COUNT] = {};
-static gltf::Image IMAGES[LIBRARY__IMAGE_COUNT] = {};
-static gltf::Material MATERIALS[LIBRARY__MATERIAL_COUNT] = {};
-static gltf::Texture TEXTURES[LIBRARY__TEXTURE_COUNT] = {};
-static gltf::Skin SKINS[LIBRARY__SKIN_COUNT] = {};
-static gltf::Mesh MESHES[LIBRARY__MESH_COUNT] = {};
-static gltf::Node NODES[LIBRARY__NODE_COUNT] = {};
-static gltf::Scene SCENES[LIBRARY__SCENE_COUNT] = {};
-static gltf::Animation ANIMATIONS[LIBRARY__ANIMATION_COUNT] = {};
+static library::Buffer BUFFERS[LIBRARY__BUFFER_COUNT] = {};
+static library::Bufferview BUFFERVIEWS[LIBRARY__BUFFER_VIEW_COUNT] = {};
+static library::Accessor ACCESSORS[LIBRARY__ACCESSOR_COUNT] = {};
+static library::TextureSampler TEXTURESAMPLERS[LIBRARY__TEXTURESAMPLER_COUNT] = {};
+static library::Image IMAGES[LIBRARY__IMAGE_COUNT] = {};
+static library::Material MATERIALS[LIBRARY__MATERIAL_COUNT] = {};
+static library::Texture TEXTURES[LIBRARY__TEXTURE_COUNT] = {};
+static library::Skin SKINS[LIBRARY__SKIN_COUNT] = {};
+static library::Mesh MESHES[LIBRARY__MESH_COUNT] = {};
+static library::Node NODES[LIBRARY__NODE_COUNT] = {};
+static library::Scene SCENES[LIBRARY__SCENE_COUNT] = {};
+static library::Animation ANIMATIONS[LIBRARY__ANIMATION_COUNT] = {};
 static library::Collection COLLECTIONS[LIBRARY__COLLECTION_COUNT] = {};
 
 static uint32_t ACTIVE_BUFFERS{0};
@@ -129,35 +130,35 @@ struct GLBJsonStream : public JsonStream {
 
     JsonParseState state{PARSE_IDLE};
 
-    gltf::Buffer *sBuffer{BUFFERS};
-    gltf::Bufferview *sBufferview{BUFFERVIEWS};
-    gltf::Accessor *sAccessor{ACCESSORS};
-    gltf::TextureSampler *sTextureSampler{TEXTURESAMPLERS};
-    gltf::Image *sImage{IMAGES};
-    gltf::Material *sMaterial{MATERIALS};
-    gltf::Texture *sTexture{TEXTURES};
-    gltf::Skin *sSkin{SKINS};
-    gltf::Mesh *sMesh{MESHES};
-    gltf::Node *sNode{NODES};
-    gltf::Scene *sScene{SCENES};
-    gltf::Sampler *sSampler{nullptr};
-    gltf::Channel *sChannel{nullptr};
-    gltf::Animation *sAnimation{ANIMATIONS};
+    library::Buffer *sBuffer{BUFFERS};
+    library::Bufferview *sBufferview{BUFFERVIEWS};
+    library::Accessor *sAccessor{ACCESSORS};
+    library::TextureSampler *sTextureSampler{TEXTURESAMPLERS};
+    library::Image *sImage{IMAGES};
+    library::Material *sMaterial{MATERIALS};
+    library::Texture *sTexture{TEXTURES};
+    library::Skin *sSkin{SKINS};
+    library::Mesh *sMesh{MESHES};
+    library::Node *sNode{NODES};
+    library::Scene *sScene{SCENES};
+    library::Sampler *sSampler{nullptr};
+    library::Channel *sChannel{nullptr};
+    library::Animation *sAnimation{ANIMATIONS};
 
-    gltf::Buffer *cBuffer{nullptr};
-    gltf::Bufferview *cBufferview{nullptr};
-    gltf::Accessor *cAccessor{nullptr};
-    gltf::TextureSampler *cTextureSampler{nullptr};
-    gltf::Image *cImage{nullptr};
-    gltf::Material *cMaterial{nullptr};
-    gltf::Texture *cTexture{nullptr};
-    gltf::Skin *cSkin{nullptr};
-    gltf::Mesh *cMesh{nullptr};
-    gltf::Node *cNode{nullptr};
-    gltf::Scene *cScene{nullptr};
-    gltf::Sampler *cSampler{nullptr};
-    gltf::Channel *cChannel{nullptr};
-    gltf::Animation *cAnimation{nullptr};
+    library::Buffer *cBuffer{nullptr};
+    library::Bufferview *cBufferview{nullptr};
+    library::Accessor *cAccessor{nullptr};
+    library::TextureSampler *cTextureSampler{nullptr};
+    library::Image *cImage{nullptr};
+    library::Material *cMaterial{nullptr};
+    library::Texture *cTexture{nullptr};
+    library::Skin *cSkin{nullptr};
+    library::Mesh *cMesh{nullptr};
+    library::Node *cNode{nullptr};
+    library::Scene *cScene{nullptr};
+    library::Sampler *cSampler{nullptr};
+    library::Channel *cChannel{nullptr};
+    library::Animation *cAnimation{nullptr};
 
     virtual void object(const std::string_view &parent, const std::string_view &key) override {
         switch (state) {
@@ -347,15 +348,15 @@ struct GLBJsonStream : public JsonStream {
         case PARSE_ACCESSORS:
             if (key == "type") {
                 if (val == "SCALAR") {
-                    cAccessor->type = gltf::Accessor::SCALAR;
+                    cAccessor->type = library::Accessor::SCALAR;
                 } else if (val == "VEC2") {
-                    cAccessor->type = gltf::Accessor::VEC2;
+                    cAccessor->type = library::Accessor::VEC2;
                 } else if (val == "VEC3") {
-                    cAccessor->type = gltf::Accessor::VEC3;
+                    cAccessor->type = library::Accessor::VEC3;
                 } else if (val == "VEC4") {
-                    cAccessor->type = gltf::Accessor::VEC4;
+                    cAccessor->type = library::Accessor::VEC4;
                 } else if (val == "MAT4") {
-                    cAccessor->type = gltf::Accessor::MAT4;
+                    cAccessor->type = library::Accessor::MAT4;
                 } else {
                     assert(false); // unsupported type
                 }
@@ -364,20 +365,20 @@ struct GLBJsonStream : public JsonStream {
         case PARSE_ANIM_CHANNELS:
             if (key == "path") {
                 if (val == "translation") {
-                    cChannel->type = gltf::Channel::TRANSLATION;
+                    cChannel->type = library::Channel::TRANSLATION;
                 } else if (val == "rotation") {
-                    cChannel->type = gltf::Channel::ROTATION;
+                    cChannel->type = library::Channel::ROTATION;
                 } else if (val == "scale") {
-                    cChannel->type = gltf::Channel::SCALE;
+                    cChannel->type = library::Channel::SCALE;
                 }
             }
             break;
         case PARSE_ANIM_SAMPLERS:
             if (key == "interpolation") {
                 if (val == "STEP") {
-                    cSampler->type = gltf::Sampler::STEP;
+                    cSampler->type = library::Sampler::STEP;
                 } else if (val == "LINEAR") {
-                    cSampler->type = gltf::Sampler::LINEAR;
+                    cSampler->type = library::Sampler::LINEAR;
                 }
             }
             break;
@@ -402,15 +403,17 @@ struct GLBJsonStream : public JsonStream {
             break;
         case PARSE_MESHES:
             if (key == "POSITION") {
-                cMesh->primitives.back().attributes[gltf::Primitive::POSITION] = sAccessor + val;
+                cMesh->primitives.back().attributes[library::Primitive::POSITION] = sAccessor + val;
             } else if (key == "NORMAL") {
-                cMesh->primitives.back().attributes[gltf::Primitive::NORMAL] = sAccessor + val;
+                cMesh->primitives.back().attributes[library::Primitive::NORMAL] = sAccessor + val;
             } else if (key == "TEXCOORD_0") {
-                cMesh->primitives.back().attributes[gltf::Primitive::TEXCOORD_0] = sAccessor + val;
+                cMesh->primitives.back().attributes[library::Primitive::TEXCOORD_0] =
+                    sAccessor + val;
             } else if (key == "JOINTS_0") {
-                cMesh->primitives.back().attributes[gltf::Primitive::JOINTS_0] = sAccessor + val;
+                cMesh->primitives.back().attributes[library::Primitive::JOINTS_0] = sAccessor + val;
             } else if (key == "WEIGHTS_0") {
-                cMesh->primitives.back().attributes[gltf::Primitive::WEIGHTS_0] = sAccessor + val;
+                cMesh->primitives.back().attributes[library::Primitive::WEIGHTS_0] =
+                    sAccessor + val;
             } else if (key == "indices") {
                 cMesh->primitives.back().indices = sAccessor + val;
             } else if (key == "material") {
@@ -484,7 +487,7 @@ struct GLBJsonStream : public JsonStream {
             break;
         case PARSE_MATERIALS_BASETEX:
             if (key == "index") {
-                cMaterial->textures[gltf::Material::TEX_DIFFUSE] = sTexture + val;
+                cMaterial->textures[library::Material::TEX_DIFFUSE] = sTexture + val;
                 state = PARSE_MATERIALS;
             }
             break;
@@ -557,8 +560,9 @@ struct GLBJsonStream : public JsonStream {
 
 static GLBJsonStream js;
 
-inline static void parseChunk(glb_chunk *chunk) {
-    static gltf::Buffer *curBuf{BUFFERS};
+std::list<std::vector<uint8_t>> _copiedBuffers;
+
+inline static void _parseChunk(glb_chunk *chunk, bool copyBuffers) {
     switch (chunk->type) {
     case GLB_CHUNK_TYPE_JSON: {
         js.state = PARSE_IDLE;
@@ -590,26 +594,68 @@ inline static void parseChunk(glb_chunk *chunk) {
         break;
     }
     case GLB_CHUNK_TYPE_BIN:
-        curBuf->data = (const unsigned char *)(chunk + 1);
-        assert(curBuf->length == chunk->length);
-        ++curBuf;
+        assert(ACTIVE_BUFFERS > 0);
+        if (copyBuffers) {
+            library::Buffer *buf = (BUFFERS + ACTIVE_BUFFERS - 1);
+            uint8_t *data = (uint8_t *)(chunk + 1);
+            buf->data = _copiedBuffers.emplace_back(data, data + chunk->length).data();
+            assert(buf->length == chunk->length);
+        } else {
+            library::Buffer *buf = (BUFFERS + ACTIVE_BUFFERS - 1);
+            buf->data = (uint8_t *)(chunk + 1);
+            assert(buf->length == chunk->length);
+        }
         break;
     default:
         break;
     }
 }
 
-library::Collection *library::loadGLB(const unsigned char *glb) {
+library::Collection *library::loadGLB(const unsigned char *glb, bool copyBuffers) {
     glb_header *header = (glb_header *)glb;
     assert(header->magic == GLB_MAGIC);
     glb_chunk *chunk = (glb_chunk *)(header + 1);
     size_t i{header->length - sizeof(glb_header)};
     while (i > 0) {
-        parseChunk(chunk);
+        _parseChunk(chunk, copyBuffers);
         i -= chunk->length + sizeof(glb_chunk);
         chunk = (glb_chunk *)((unsigned char *)chunk + chunk->length + sizeof(glb_chunk));
     }
     return cCollection;
+}
+
+library::Collection *library::createCollection(const char *name) {
+    auto collection = COLLECTIONS + ACTIVE_COLLECTIONS++;
+    collection->scene = SCENES + ACTIVE_SCENES++;
+    collection->scene->name = name;
+    return collection;
+}
+
+library::Node *library::createNode() {
+    auto node = NODES + ACTIVE_NODES++;
+    return node;
+}
+
+library::Mesh *library::createMesh() {
+    auto mesh = MESHES + ACTIVE_MESHES++;
+    return mesh;
+}
+
+library::Accessor *library::createAccessor(const void *data, size_t count, size_t elemSize,
+                                           library::Accessor::Type type, unsigned int componentType,
+                                           unsigned int target) {
+    auto accessor = ACCESSORS + ACTIVE_ACCESSORS++;
+    accessor->type = type;
+    accessor->componentType = componentType;
+    accessor->count = count;
+    accessor->bufferView = BUFFERVIEWS + ACTIVE_BUFFERVIEWS++;
+    accessor->bufferView->length = count * elemSize;
+    accessor->bufferView->offset = 0;
+    accessor->bufferView->target = target;
+    accessor->bufferView->buffer = BUFFERS + ACTIVE_BUFFERS++;
+    accessor->bufferView->buffer->data = (unsigned char *)data;
+    accessor->bufferView->buffer->length = accessor->bufferView->length;
+    return accessor;
 }
 
 void library::print() {

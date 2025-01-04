@@ -2,6 +2,7 @@
 
 #include "gcem.hpp"
 #include "gpu.h"
+#include "library.h"
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -19,7 +20,48 @@ static const uint16_t screen_indices[] = {
     0, 1, 2,
     1, 3, 2
 };
+
+static const float vector_vertices[] = {
+    -0.1f, +0.0f, -0.1f,    -0.1f, +0.0f, -0.1f,   0.0f, 0.0f,
+    +0.1f, +0.0f, -0.1f,    +0.1f, +0.0f, -0.1f,   1.0f, 0.0f,
+    +0.0f, +0.0f, +0.1f,    +0.0f, +0.0f, +0.1f,   0.0f, 1.0f,
+    +0.0f, +1.0f, +0.0f,    +0.0f, +1.0f, +1.0f,   1.0f, 1.0f,
+};
+static const uint16_t vector_indices[] = {
+    0, 2, 1,
+    0, 1, 3,
+    1, 2, 3,
+    2, 0, 3,
+};
+
 // clang-format on
+
+struct Sprite {
+    constexpr Sprite()
+        : positions{
+              {0.0f, 0.0f, 0.0f},
+              {1.0f, 0.0f, 0.0f},
+              {0.0f, 1.0f, 0.0f},
+              {1.0f, 1.0f, 0.0f},
+          },
+          normals{
+              {0.0f, 0.0f, 1.0f},
+              {0.0f, 0.0f, 1.0f},
+              {0.0f, 0.0f, 1.0f},
+              {0.0f, 0.0f, 1.0f},
+          },
+          uvs{
+              {0.0f, 0.0f},
+              {1.0f, 0.0f},
+              {0.0f, 1.0f},
+              {1.0f, 1.0f},
+          },
+          indices{0, 1, 2, 1, 3, 2} {}
+    glm::vec3 positions[4];
+    glm::vec3 normals[4];
+    glm::vec2 uvs[4];
+    uint16_t indices[6];
+};
 
 /*constexpr std::pair<std::array<float, 10>, std::array<uint16_t, 10>> Cube() {
     std::array<float, 10> vs;
@@ -34,29 +76,23 @@ static const uint16_t screen_indices[] = {
 
 */
 
-struct Vertex {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec2 uv;
-};
-
 template <std::size_t N, std::size_t M> struct Plane {
     static constexpr std::size_t CELLS_N = N + 1;
     static constexpr std::size_t CELLS_M = M + 1;
     static constexpr std::size_t CELLS = CELLS_N * CELLS_M;
-    constexpr Plane(float uvScale = 1.0f) : vertices{}, indices{} {
+    constexpr Plane(float uvScale = 1.0f) : positions{}, normals{}, uvs{}, indices{} {
         for (size_t m{0}; m < CELLS_M; ++m) {
             for (size_t n{0}; n < CELLS_N; ++n) {
                 int i = m * CELLS_N + n;
                 float s = (float)n / N;
                 float t = (float)m / M;
-                vertices[i].position = {
+                positions[i] = {
                     s * 2.0f - 1.0f,
                     t * 2.0f - 1.0f,
                     0.0f,
                 };
-                vertices[i].normal = {0.0f, 0.0f, 1.0f};
-                vertices[i].uv = {s * uvScale, t * uvScale};
+                normals[i] = {0.0f, 0.0f, 1.0f};
+                uvs[i] = {s * uvScale, t * uvScale};
             }
         }
         size_t i = 0;
@@ -75,13 +111,18 @@ template <std::size_t N, std::size_t M> struct Plane {
             ++j;
         }
     }
-    Vertex vertices[CELLS];
+    glm::vec3 positions[CELLS];
+    glm::vec3 normals[CELLS];
+    glm::vec2 uvs[CELLS];
     uint16_t indices[CELLS * 6];
 };
 
 struct Cube {
 
-    constexpr Cube() : vertices{}, indices{0, 1, 2, 0, 3, 2} {
+    static constexpr std::size_t NUM_VERTICES = 6 * 4;
+    static constexpr std::size_t NUM_INDICES = 6 * 6;
+
+    constexpr Cube() : positions{}, normals{}, uvs{}, indices{0, 1, 2, 0, 3, 2} {
         /*uint32_t i{0};
         for (size_t z{0}; z < 2; ++z) {
             for (size_t y{0}; y < 2; ++y) {
@@ -107,21 +148,21 @@ struct Cube {
                                                              : glm::vec3{1.0f, 0.0f, 0.0f},
                            normal);
             glm::vec3 up = glm::cross(normal, right);
-            vertices[i + 0].position = normal - right - up;
-            vertices[i + 0].normal = normal;
-            vertices[i + 0].uv = {0.0f, 0.0f};
+            positions[i + 0] = normal - right - up;
+            normals[i + 0] = normal;
+            uvs[i + 0] = {0.0f, 0.0f};
 
-            vertices[i + 1].position = normal + right - up;
-            vertices[i + 1].normal = normal;
-            vertices[i + 1].uv = {1.0f, 0.0f};
+            positions[i + 1] = normal + right - up;
+            normals[i + 1] = normal;
+            uvs[i + 1] = {1.0f, 0.0f};
 
-            vertices[i + 2].position = normal - right + up;
-            vertices[i + 2].normal = normal;
-            vertices[i + 2].uv = {0.0f, 1.0f};
+            positions[i + 2] = normal - right + up;
+            normals[i + 2] = normal;
+            uvs[i + 2] = {0.0f, 1.0f};
 
-            vertices[i + 3].position = normal + right + up;
-            vertices[i + 3].normal = normal;
-            vertices[i + 3].uv = {1.0f, 1.0f};
+            positions[i + 3] = normal + right + up;
+            normals[i + 3] = normal;
+            uvs[i + 3] = {1.0f, 1.0f};
 
             indices[j + 0] = i + 0;
             indices[j + 1] = i + 1;
@@ -135,8 +176,10 @@ struct Cube {
         }
     }
 
-    Vertex vertices[6 * 4];
-    uint16_t indices[6 * 6];
+    glm::vec3 positions[NUM_VERTICES];
+    glm::vec3 normals[NUM_VERTICES];
+    glm::vec2 uvs[NUM_VERTICES];
+    uint16_t indices[NUM_INDICES];
 };
 
 template <std::size_t segments, std::size_t discs> struct Sphere {
@@ -145,27 +188,27 @@ template <std::size_t segments, std::size_t discs> struct Sphere {
     static constexpr std::size_t CELLS = CELLS_N * CELLS_M;
 
     enum Options {
-        NONE = 0x00,
-        CAP_A = (1 << 0),
-        CAP_B = (1 << 1),
-        CONE_A = (1 << 2),
-        CONE_B = (1 << 3),
-        CYLINDER = (1 << 4),
+        OPT_NONE = 0x00,
+        OPT_CAP_A = (1 << 0),
+        OPT_CAP_B = (1 << 1),
+        OPT_CONE_A = (1 << 2),
+        OPT_CONE_B = (1 << 3),
+        OPT_CYLINDER = (1 << 4),
     };
-    constexpr Sphere(Options options = NONE) : vertices{}, indices{} {
+    constexpr Sphere(Options options = OPT_NONE) : positions{}, normals{}, uvs{}, indices{} {
         float s = 1.0f / static_cast<float>(segments);
         uint16_t vs_i = 0;
         float theta = M_PI / static_cast<float>(discs);
 
         for (uint16_t j{0}; j <= discs; ++j) {
             float y, r;
-            if (options & CYLINDER) {
+            if (options & OPT_CYLINDER) {
                 r = 1.0f;
                 y = -1.0f + (float)j / discs * 2.0f;
-            } else if (options & CONE_A) {
+            } else if (options & OPT_CONE_A) {
                 r = (float)j / discs;
                 y = -1.0f + (float)j / discs * 2.0f;
-            } else if (options & CONE_B) {
+            } else if (options & OPT_CONE_B) {
                 r = 1.0f - (float)j / discs;
                 y = -1.0f + (float)j / discs * 2.0f;
             } else {
@@ -176,9 +219,9 @@ template <std::size_t segments, std::size_t discs> struct Sphere {
             for (uint16_t i{0}; i <= segments; ++i) {
                 float a = 2.0f * M_PI * i * s;
                 glm::vec3 v{gcem::sin(a) * r, y, gcem::cos(a) * r};
-                vertices[vs_i].position = v;
-                vertices[vs_i].normal = v;
-                vertices[vs_i].uv = {i * s, y * 0.5f + 0.5f};
+                positions[vs_i] = v;
+                normals[vs_i] = v;
+                uvs[vs_i] = {i * s, y * 0.5f + 0.5f};
                 ++vs_i;
             }
         }
@@ -186,7 +229,7 @@ template <std::size_t segments, std::size_t discs> struct Sphere {
         size_t i{0};
         size_t j{0};
         for (uint16_t d{0}; d < discs; ++d) {
-            for (uint16_t s{0}; s < segments; ++s) {
+            for (uint16_t seg{0}; seg < segments; ++seg) {
                 indices[i * 6 + 0] = j + 0;
                 indices[i * 6 + 1] = j + 1;
                 indices[i * 6 + 2] = j + CELLS_N;
@@ -200,12 +243,15 @@ template <std::size_t segments, std::size_t discs> struct Sphere {
         }
     }
 
-    Vertex vertices[CELLS];
+    glm::vec3 positions[CELLS];
+    glm::vec3 normals[CELLS];
+    glm::vec2 uvs[CELLS];
     uint16_t indices[segments * discs * 6];
 };
 
-gpu::Primitive *getBuiltinPrimitive(gpu::BuiltinPrimitive builtinPrimitive);
+library::Collection *createBuiltinPrimitives();
 
-void createBuiltinPrimitives();
+enum BuiltinPrimitives { SPRITE, PLANE, CUBE, SPHERE, CYLINDER, CONE, PRIMITIVE_COUNT };
+gpu::Primitive *builtinPrimitives(BuiltinPrimitives builtinPrimitives);
 
 } // namespace gpu

@@ -5,6 +5,7 @@
 #include "debug.hpp"
 #include "logging.h"
 #include "opengl.h"
+#include "primer.h"
 #include "primitive.h"
 #include "shader.h"
 #include "stb_image.h"
@@ -84,15 +85,16 @@ void gpu::allocate() {
         createTexture(checkers_tex.buf, checkers_tex.width, checkers_tex.height,
                       static_cast<ChannelSetting>(checkers_tex.channels), GL_UNSIGNED_BYTE));
 
+    // auto gridColor = rgb(1, 0, 0); // 0x44AAFF
     _builtinMaterials[BuiltinMaterial::GRID_TILE] = MATERIALS.acquire();
-    _builtinMaterials[BuiltinMaterial::GRID_TILE]->color = 0x88FF88;
+    _builtinMaterials[BuiltinMaterial::GRID_TILE]->color = rgb(60, 178, 237);
     constexpr size_t quad_width = 64;
     constexpr size_t quad_height = 64;
     constexpr StaticTexture<quad_width, quad_height, 4> quadratic_tex{[](uint32_t x, uint32_t y) {
         // glm::vec2 st = glm::vec2(x, y) / glm::vec2(8, 8);
         // st -= 0.5f;
         bool paint = (x <= 1 || x == (quad_width / 2 + 1) || y <= 1 || y == (quad_width / 2 + 1));
-        return glm::vec4(paint ? 1.0f : 0.0f);
+        return glm::vec4(paint ? 1.0f : 0.24f);
     }};
     _builtinMaterials[BuiltinMaterial::GRID_TILE]->textures.emplace(
         GL_TEXTURE0,
@@ -104,8 +106,6 @@ void gpu::allocate() {
     uint8_t onePixel[]{0xFF, 0xFF, 0xFF};
     _builtinMaterials[BuiltinMaterial::WHITE]->textures.emplace(
         GL_TEXTURE0, createTexture(onePixel, 1, 1, ChannelSetting::RGB, GL_UNSIGNED_BYTE));
-
-    createBuiltinPrimitives();
 }
 
 void gpu::dispose() {
@@ -157,27 +157,51 @@ gpu::Mesh *gpu::createMesh() {
     return mesh;
 }
 
-gpu::Primitive *gpu::createPrimitive(const void *vertices, size_t vertices_len,
-                                     const uint16_t *indices, size_t indices_len) {
-    Primitive *prim = PRIMITIVES.acquire();
+gpu::Mesh *gpu::createMesh(gpu::Primitive *primitive, gpu::Material *material) {
+    auto mesh = createMesh();
+    mesh->primitives.emplace_back(primitive, material ? material : builtinMaterial(CHECKERS));
+    return mesh;
+}
+
+gpu::Primitive *gpu::createPrimitive(const glm::vec3 *positions, const glm::vec3 *normals,
+                                     const glm::vec2 *uvs, size_t vertex_count,
+                                     const uint16_t *indices, size_t index_count) {
+    gpu::Primitive *prim = PRIMITIVES.acquire();
     prim->vao = VAOS.acquire();
     glBindVertexArray(*prim->vao);
+
     uint32_t *vbo = prim->vbos.emplace_back(VBOS.acquire());
-    prim->ebo = VBOS.acquire();
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices_len, vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec3), positions, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+
+    vbo = prim->vbos.emplace_back(VBOS.acquire());
+    glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec3), normals, GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(1);
+
+    vbo = prim->vbos.emplace_back(VBOS.acquire());
+    glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec2), uvs, GL_STATIC_DRAW);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(2);
+
+    prim->ebo = VBOS.acquire();
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *prim->ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_len, indices, GL_STATIC_DRAW);
-    prim->count = indices_len / sizeof(uint16_t);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_count * sizeof(uint16_t), indices, GL_STATIC_DRAW);
+    prim->count = index_count;
     return prim;
+}
+gpu::Primitive *gpu::createPrimitive(const VertexObject &vertexObject) {
+    return createPrimitive(vertexObject.positions.data(), vertexObject.normals.data(),
+                           vertexObject.uvs.data(), vertexObject.positions.size(),
+                           vertexObject.indices.data(), vertexObject.indices.size());
 }
 
 gpu::Material *gpu::builtinMaterial(BuiltinMaterial builtinMaterial) {
     return _builtinMaterials[builtinMaterial];
-}
-
-gpu::Primitive *gpu::builtinPrimitive(BuiltinPrimitive builtinPrimitive) {
-    return gpu::getBuiltinPrimitive(builtinPrimitive);
 }
 
 gpu::Framebuffer *gpu::createFramebuffer() {
@@ -199,20 +223,22 @@ gpu::Texture *gpu::createTexture(const uint8_t *data, uint32_t width, uint32_t h
     return texture;
 }
 
-gpu::Texture *gpu::createTextureFromFile(const char *path) {
+gpu::Texture *gpu::createTextureFromFile(const char *path, bool flip) {
     int iw, ih, ic;
     const uint8_t *idata = stbi_load(path, &iw, &ih, &ic, 0);
+    stbi_set_flip_vertically_on_load(flip);
     return createTexture(idata, iw, ih, static_cast<ChannelSetting>(ic), GL_UNSIGNED_BYTE);
 }
 
-gpu::Texture *gpu::createTextureFromMem(const uint8_t *addr, uint32_t len) {
+gpu::Texture *gpu::createTextureFromMem(const uint8_t *addr, uint32_t len, bool flip) {
     int iw, ih, ic;
+    stbi_set_flip_vertically_on_load(flip);
     const uint8_t *idata = stbi_load_from_memory((uint8_t *)addr, len, &iw, &ih, &ic, 0);
     return createTexture(idata, iw, ih, static_cast<ChannelSetting>(ic), GL_UNSIGNED_BYTE);
 }
-gpu::Texture *gpu::createTexture(const gltf::Texture &texture) {
-    return createTextureFromMem((uint8_t *)texture.image->view->data(),
-                                texture.image->view->length);
+gpu::Texture *gpu::createTexture(const library::Texture &texture) {
+    return createTextureFromMem((uint8_t *)texture.image->view->data(), texture.image->view->length,
+                                false);
 }
 
 gpu::Texture *gpu::createTexture(const bdf::Font &font) {
@@ -271,10 +297,10 @@ void gpu::freeText(gpu::Text *text) {
 
 gpu::Material *gpu::createMaterial() { return MATERIALS.acquire(); }
 
-gpu::Material *gpu::createMaterial(const gltf::Material &material) {
+gpu::Material *gpu::createMaterial(const library::Material &material) {
     gpu::Material *mat = MATERIALS.acquire();
     bool noTex = true;
-    for (size_t i{0}; i < gltf::Material::TEX_COUNT; ++i) {
+    for (size_t i{0}; i < library::Material::TEX_COUNT; ++i) {
         if (material.textures[i]) {
             mat->textures.emplace(GL_TEXTURE0 + i, createTexture(*material.textures[i]));
             noTex = false;
@@ -317,50 +343,62 @@ void gpu::freeMaterial(gpu::Material *material) {
     MATERIALS.free(material);
 }
 
-static gpu::Mesh *_createMesh(const gltf::Mesh &gltfMesh) {
+static gpu::Mesh *_createMesh(const library::Mesh &libraryMesh) {
     gpu::Mesh *mesh = MESHES.acquire();
-    for (size_t i{0}; i < gltfMesh.primitives.size(); ++i) {
-        const auto &gltfPrimitive = gltfMesh.primitives[i];
+    for (size_t i{0}; i < libraryMesh.primitives.size(); ++i) {
+        const auto &libraryPrimitive = libraryMesh.primitives[i];
         auto &[primitive, material] = mesh->primitives.emplace_back(
-            PRIMITIVES.acquire(),
-            gltfPrimitive.material ? gpu::createMaterial(*gltfPrimitive.material) : &MATERIALS[0]);
+            PRIMITIVES.acquire(), libraryPrimitive.material
+                                      ? gpu::createMaterial(*libraryPrimitive.material)
+                                      : &MATERIALS[0]);
+        const_cast<library::Primitive &>(libraryPrimitive).gpuInstance = primitive;
         primitive->vao = VAOS.acquire();
         glBindVertexArray(*primitive->vao);
-        for (size_t j{0}; j < gltf::Primitive::Attribute::COUNT; ++j) {
-            const gltf::Accessor *gltfAttr = gltfPrimitive.attributes[j];
-            if (gltfAttr == nullptr) {
+        for (size_t j{0}; j < library::Primitive::Attribute::COUNT; ++j) {
+            const library::Accessor *libraryAttr = libraryPrimitive.attributes[j];
+            if (libraryAttr == nullptr) {
                 continue;
             }
             uint32_t vbo = *primitive->vbos.emplace_back(VBOS.acquire());
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, gltfAttr->bufferView->length,
-                         gltfAttr->bufferView->buffer->data + gltfAttr->bufferView->offset,
+            glBufferData(GL_ARRAY_BUFFER, libraryAttr->bufferView->length,
+                         libraryAttr->bufferView->buffer->data + libraryAttr->bufferView->offset,
                          GL_STATIC_DRAW);
             int size;
-            if (gltfAttr->type == gltf::Accessor::MAT4) {
+            if (libraryAttr->type == library::Accessor::MAT4) {
                 assert(false);
             } else {
-                size = gltfAttr->type + 1;
+                size = libraryAttr->type + 1;
             }
-            int baseSize = gltfAttr->componentType == GL_FLOAT ? sizeof(float) : 1;
-            glVertexAttribPointer(j, size, gltfAttr->componentType, GL_FALSE, size * baseSize,
+            int baseSize = libraryAttr->componentType == GL_FLOAT ? sizeof(float) : 1;
+            glVertexAttribPointer(j, size, libraryAttr->componentType, GL_FALSE, size * baseSize,
                                   (void *)0);
             glEnableVertexAttribArray(j);
         }
-        primitive->ebo = VBOS.acquire();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *primitive->ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, gltfPrimitive.indices->bufferView->length,
-                     gltfPrimitive.indices->bufferView->buffer->data +
-                         gltfPrimitive.indices->bufferView->offset,
-                     GL_STATIC_DRAW);
-        primitive->count = gltfPrimitive.indices->count;
+        if (libraryPrimitive.indices) {
+            primitive->ebo = VBOS.acquire();
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *primitive->ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, libraryPrimitive.indices->bufferView->length,
+                         libraryPrimitive.indices->bufferView->buffer->data +
+                             libraryPrimitive.indices->bufferView->offset,
+                         GL_STATIC_DRAW);
+            primitive->count = libraryPrimitive.indices->count;
+        } else {
+            primitive->count = libraryPrimitive.attributes[0]->count;
+        }
     }
-    mesh->gltfMesh = &gltfMesh;
-    const_cast<gltf::Mesh *>(mesh->gltfMesh)->gpuInstance = mesh;
+    mesh->libraryMesh = &libraryMesh;
+    const_cast<library::Mesh *>(mesh->libraryMesh)->gpuInstance = mesh;
     return mesh;
 }
 
 gpu::Node *gpu::createNode() { return NODES.acquire(); }
+
+gpu::Node *gpu::createNode(gpu::Mesh *mesh) {
+    auto node = createNode();
+    node->mesh = mesh;
+    return node;
+}
 
 gpu::Node *gpu::createNode(const gpu::Node &other) {
     gpu::Node *node = createNode();
@@ -368,7 +406,7 @@ gpu::Node *gpu::createNode(const gpu::Node &other) {
     for (gpu::Node *child : other.children) {
         node->children.emplace_back(createNode(*child));
     }
-    node->gltfNode = other.gltfNode;
+    node->libraryNode = other.libraryNode;
     node->translation = other.translation.data();
     node->rotation = other.rotation.data();
     node->scale = other.scale.data();
@@ -377,38 +415,38 @@ gpu::Node *gpu::createNode(const gpu::Node &other) {
     return node;
 }
 
-gpu::Node *gpu::createNode(const gltf::Node &gltfNode) {
+gpu::Node *gpu::createNode(const library::Node &libraryNode) {
     Node *node = createNode();
-    node->gltfNode = &gltfNode;
-    const_cast<gltf::Node &>(gltfNode).gpuInstance = (void *)node;
-    if (gltfNode.mesh) {
-        gpu::Mesh *loadedMesh = (gpu::Mesh *)gltfNode.mesh->gpuInstance;
+    node->libraryNode = &libraryNode;
+    const_cast<library::Node &>(libraryNode).gpuInstance = (void *)node;
+    if (libraryNode.mesh) {
+        gpu::Mesh *loadedMesh = (gpu::Mesh *)libraryNode.mesh->gpuInstance;
         if (loadedMesh) {
             node->mesh = loadedMesh;
-            LOG_TRACE("Reusing mesh: %s", gltfNode.mesh->name.c_str());
+            LOG_TRACE("Reusing mesh: %s", libraryNode.mesh->name.c_str());
         } else {
-            node->mesh = _createMesh(*gltfNode.mesh);
-            LOG_TRACE("Loading mesh: %s", gltfNode.mesh->name.c_str());
+            node->mesh = _createMesh(*libraryNode.mesh);
+            LOG_TRACE("Loading mesh: %s", libraryNode.mesh->name.c_str());
         }
     }
     glBindVertexArray(0);
-    node->translation = gltfNode.translation.data();
-    node->rotation = gltfNode.rotation.data();
-    node->scale = gltfNode.scale.data();
+    node->translation = libraryNode.translation.data();
+    node->rotation = libraryNode.rotation.data();
+    node->scale = libraryNode.scale.data();
     node->hidden = false;
-    for (gltf::Node *gltfChild : gltfNode.children) {
-        node->children.emplace_back(createNode(*gltfChild))->setParent(node);
-        if (gltfChild->skin) {
+    for (library::Node *libraryChild : libraryNode.children) {
+        node->children.emplace_back(createNode(*libraryChild))->setParent(node);
+        if (libraryChild->skin) {
             node->skin = SKINS.acquire();
-            node->skin->gltfSkin = gltfChild->skin;
+            node->skin->librarySkin = libraryChild->skin;
         }
     }
     if (node->skin) {
-        for (gltf::Node *joint : node->skin->gltfSkin->joints) {
+        for (library::Node *joint : node->skin->librarySkin->joints) {
             node->skin->joints.emplace_back(node->childByName(joint->name.c_str()));
         }
-        const GLfloat *fp = (const GLfloat *)node->skin->gltfSkin->inverseBindMatrices->data();
-        for (size_t j{0}; j < node->skin->gltfSkin->joints.size(); ++j) {
+        const GLfloat *fp = (const GLfloat *)node->skin->librarySkin->inverseBindMatrices->data();
+        for (size_t j{0}; j < node->skin->librarySkin->joints.size(); ++j) {
             node->skin->invBindMatrices.push_back(glm::make_mat4(fp + j * 16));
         }
     }
@@ -441,7 +479,7 @@ static void freeMesh(gpu::Mesh *mesh) {
             material = nullptr;
         }*/
     }
-    const_cast<gltf::Mesh *>(mesh->gltfMesh)->gpuInstance = nullptr;
+    const_cast<library::Mesh *>(mesh->libraryMesh)->gpuInstance = nullptr;
     mesh->primitives.clear();
     MESHES.free(mesh);
 }
@@ -463,34 +501,34 @@ void gpu::freeNode(gpu::Node *node) {
         }
     }
     node->mesh = nullptr;
-    node->gltfNode = nullptr;
+    node->libraryNode = nullptr;
     if (node->skin) {
         node->skin->joints.clear();
-        node->skin->gltfSkin = nullptr;
+        node->skin->librarySkin = nullptr;
         SKINS.free(node->skin);
         node->skin = nullptr;
     }
     for (Node *child : node->children) {
         freeNode(child);
     }
-    const_cast<gltf::Node *>(node->gltfNode)->gpuInstance = nullptr;
+    const_cast<library::Node *>(node->libraryNode)->gpuInstance = nullptr;
     node->children.clear();
     NODES.free(node);
 }
 
 gpu::Scene *gpu::createScene() {
     gpu::Scene *scene = SCENES.acquire();
-    assert(scene->gltfScene == nullptr);
+    assert(scene->libraryScene == nullptr);
     return scene;
 }
 
-gpu::Scene *gpu::createScene(const gltf::Scene &gltfScene) {
+gpu::Scene *gpu::createScene(const library::Scene &libraryScene) {
     gpu::Scene *scene = createScene();
-    for (gltf::Node *gltfNode : gltfScene.nodes) {
-        scene->nodes.emplace_back(createNode(*gltfNode));
+    for (library::Node *libraryNode : libraryScene.nodes) {
+        scene->nodes.emplace_back(createNode(*libraryNode));
     }
-    scene->gltfScene = &gltfScene;
-    const_cast<gltf::Scene &>(gltfScene).gpuInstance = (void *)scene;
+    scene->libraryScene = &libraryScene;
+    const_cast<library::Scene &>(libraryScene).gpuInstance = (void *)scene;
     return scene;
 }
 
@@ -502,8 +540,8 @@ void gpu::freeScene(gpu::Scene *scene) {
         }
     }
     scene->nodes.clear();
-    const_cast<gltf::Scene *>(scene->gltfScene)->gpuInstance = nullptr;
-    scene->gltfScene = nullptr;
+    const_cast<library::Scene *>(scene->libraryScene)->gpuInstance = nullptr;
+    scene->libraryScene = nullptr;
 }
 
 static void invalidateRecursive(gpu::Node *node) {
@@ -524,7 +562,7 @@ void gpu::bindMaterial(gpu::ShaderProgram *shaderProgram, gpu::Material *materia
         *metallic << material->metallic;
     }
     for (const auto &it : material->textures) {
-        // printf("%s: %u\n", this->gltfNode->name.c_str(), *it.second);
+        // printf("%s: %u\n", this->libraryNode->name.c_str(), *it.second);
         glActiveTexture(it.first);
         glBindTexture(GL_TEXTURE_2D, it.second->id);
     }
@@ -532,7 +570,11 @@ void gpu::bindMaterial(gpu::ShaderProgram *shaderProgram, gpu::Material *materia
 
 void gpu::Primitive::render() {
     glBindVertexArray(*vao);
-    glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, NULL);
+    if (ebo) {
+        glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, NULL);
+    } else {
+        glDrawArrays(GL_TRIANGLES, 0, count);
+    }
     glBindVertexArray(0);
 }
 
@@ -583,7 +625,7 @@ void gpu::Node::render(ShaderProgram *shaderProgram) {
 }
 
 gpu::Node *gpu::Node::childByName(const char *name) {
-    if (strcmp(this->gltfNode->name.c_str(), name) == 0) {
+    if (strcmp(this->libraryNode->name.c_str(), name) == 0) {
         return this;
     }
     for (Node *child : children) {
@@ -596,11 +638,11 @@ gpu::Node *gpu::Node::childByName(const char *name) {
 }
 const std::string &gpu::Node::name() const {
     static const std::string noname{"noname"};
-    return gltfNode ? gltfNode->name : noname;
+    return libraryNode ? libraryNode->name : noname;
 }
 const std::string &gpu::Node::meshName() const {
     static const std::string noname{"noname"};
-    return (mesh && mesh->gltfMesh) ? mesh->gltfMesh->name : noname;
+    return (mesh && mesh->libraryMesh) ? mesh->libraryMesh->name : noname;
 }
 
 void gpu::Node::addChild(gpu::Node *node) { children.emplace_back(node)->setParent(this); }
@@ -634,7 +676,7 @@ gpu::Material *gpu::Node::material(size_t primitiveIndex) {
 
 gpu::Node *gpu::Scene::nodeByName(const char *name) {
     for (Node *node : nodes) {
-        if (node->gltfNode->name.compare(name) == 0) {
+        if (node->libraryNode->name.compare(name) == 0) {
             return node;
         }
     }
@@ -678,12 +720,12 @@ void gpu::UniformBuffer::bindBufferBase() {
     glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, *id);
 }
 
-void gpu::UniformBuffer::bufferData(uint32_t length, void *data) {
-    glBufferData(GL_UNIFORM_BUFFER, length, data, GL_STATIC_DRAW);
+void gpu::UniformBuffer::bufferData(uint32_t length_, void *data_) {
+    glBufferData(GL_UNIFORM_BUFFER, length, data_, GL_STATIC_DRAW);
 }
 
-void gpu::UniformBuffer::bufferSubData(uint32_t offset, uint32_t length, void *data) {
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, length, data);
+void gpu::UniformBuffer::bufferSubData(uint32_t offset, uint32_t length_, void *data_) {
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, length, data_);
 }
 
 gpu::Shader *gpu::createShader(uint32_t type, const char *src) {
@@ -732,4 +774,82 @@ void gpu::freeShaderProgram(ShaderProgram *shaderProgram) {
     shaderProgram->vertex = nullptr;
     shaderProgram->fragment = nullptr;
     SHADERPROGRAMS.free(shaderProgram);
+}
+
+#if 0
+    prim->vao = VAOS.acquire();
+    glBindVertexArray(*prim->vao);
+    uint32_t *vbo = prim->vbos.emplace_back(VBOS.acquire());
+    prim->ebo = VBOS.acquire();
+    glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec3), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *prim->ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_count * sizeof(uint16_t), indices, GL_STATIC_DRAW);
+    prim->count = index_count;
+#endif
+
+void gpu::renderScreen() {
+    static uint32_t *vao{nullptr};
+    static uint32_t *vbo{nullptr};
+    static uint32_t *ebo{nullptr};
+    if (vao == nullptr) {
+        vao = VAOS.acquire();
+        glBindVertexArray(*vao);
+        vbo = VBOS.acquire();
+        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::screen_vertices), gpu::screen_vertices,
+                     GL_STATIC_DRAW);
+        ebo = VBOS.acquire();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::screen_indices), gpu::screen_indices,
+                     GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    }
+    glBindVertexArray(*vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+}
+
+inline static void _setupAttribPosNorUV_Interleaved() {
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
+    glBindVertexArray(0);
+}
+
+void gpu::renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector) {
+    if (vector.hidden) {
+        return;
+    }
+    static uint32_t *vao{nullptr};
+    static uint32_t *vbo{nullptr};
+    static uint32_t *ebo{nullptr};
+    shaderProgram->use();
+    const glm::mat4 model =
+        glm::scale(glm::translate(glm::mat4(1.0f), vector.O) *
+                       glm::mat4(glm::mat3_cast(primer::quaternionFromDirection(vector.Ray))),
+                   glm::vec3{1.0f, glm::length(vector.Ray), 1.0f});
+    glActiveTexture(GL_TEXTURE0);
+    builtinMaterial(gpu::WHITE)->textures.at(GL_TEXTURE0)->bind();
+    shaderProgram->uniforms.at("u_model") << model;
+    shaderProgram->uniforms.at("u_color") << vector.color.vec4();
+    if (vao == nullptr) {
+        vao = VAOS.acquire();
+        glBindVertexArray(*vao);
+        vbo = VBOS.acquire();
+        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::vector_vertices), gpu::vector_vertices,
+                     GL_STATIC_DRAW);
+        ebo = VBOS.acquire();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::vector_indices), gpu::vector_indices,
+                     GL_STATIC_DRAW);
+        _setupAttribPosNorUV_Interleaved();
+    }
+    glBindVertexArray(*vao);
+    glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_SHORT, NULL);
 }

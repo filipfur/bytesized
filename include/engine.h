@@ -24,17 +24,19 @@ struct Panel {
 
 struct Engine : public window::IEngine,
                 public window::IKeyListener,
-                public console::IConsole,
+                public IConsole,
                 public IEditor,
-                public IClickNPick {
+                public IClickNPick,
+                public persist::IPersist {
 
-    Engine(Editor &editor_, console::Console &console_, int windowWidth, int windowHeight)
+    Engine(Editor &editor_, Console &console_, int windowWidth, int windowHeight)
         : _clickNPick{this}, _editor{editor_}, _console{console_}, _windowWidth{windowWidth},
           _windowHeight{windowHeight} {
         _console.registerIConsole(this);
         _editor.registerIEditor(this);
         window::registerApplication(this);
         window::registerKeyListener(this);
+        persist::registerIPersist(this);
     }
 
     void setIApplication(IApplication *app) { _app = app; }
@@ -52,8 +54,14 @@ struct Engine : public window::IEngine,
 
     void listNodes() override;
     bool spawnNode(const char *name) override;
-    bool openSaveFile(const char *name) override;
-    bool saveSaveFile(const char *name) override;
+    bool setNodeTranslation(const glm::vec3 &) override;
+    bool setNodeRotation(const glm::quat &) override;
+    bool setNodeScale(const glm::vec3 &) override;
+    bool applyNodeTranslation(const glm::vec3 &) override;
+    bool applyNodeRotation(const glm::quat &) override;
+    bool applyNodeScale(const glm::vec3 &) override;
+    bool openSaveFile(const char *fpath) override;
+    bool saveSaveFile(const char *fpath) override;
     bool openScene(size_t index) override;
     bool openScene(const char *name) override;
     void quit(bool force) override;
@@ -68,7 +76,7 @@ struct Engine : public window::IEngine,
     void unstage();
     void stage(const gpu::Scene &scene);
 
-    assets::Collection *addCollection(const uint8_t *glbData);
+    assets::Collection *addCollection(const library::Collection &collection);
     assets::Collection *findCollection(const char *name);
 
     bool assignPanel(Panel::Type type, void *ptr);
@@ -80,11 +88,16 @@ struct Engine : public window::IEngine,
 
     bool nodeClicked(gpu::Node *node) override;
 
+    bool saveNodeInfo(gpu::Node *node, uint32_t &info) override;
+    bool saveNodeExtra(gpu::Node *node, uint32_t &extra) override;
+    gpu::Scene *loadedScene(const char *name) override;
+    bool loadedEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info, uint32_t extra) override;
+
     ~Engine();
 
     ClickNPick _clickNPick;
     Editor &_editor;
-    console::Console &_console;
+    Console &_console;
     int _windowWidth;
     int _windowHeight;
     int _drawableWidth;
@@ -94,6 +107,7 @@ struct Engine : public window::IEngine,
     gpu::ShaderProgram *animProgram;
     gpu::ShaderProgram *textProgram;
     gpu::ShaderProgram *uiProgram;
+    gpu::ShaderProgram *uiTextProgram;
     gpu::ShaderProgram *screenProgram;
     std::vector<gpu::Node *> nodes;
     std::vector<gpu::Node *> skinNodes;
@@ -104,4 +118,6 @@ struct Engine : public window::IEngine,
     persist::SaveFile *_saveFile{nullptr};
     Panel _panels[9];
     bool _blockMode{false};
+    glm::mat4 perspectiveProjection;
+    std::list<Vector> vectors;
 };

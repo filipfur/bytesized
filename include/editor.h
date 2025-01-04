@@ -7,13 +7,6 @@
 #include <glm/glm.hpp>
 #include <list>
 
-const static glm::vec3 UP{0.0f, 1.0f, 0.0f};
-const static glm::vec3 AXIS_X{1.0f, 0.0f, 0.0f};
-const static glm::vec3 AXIS_Y{0.0f, 1.0f, 0.0f};
-const static glm::vec3 AXIS_Z{0.0f, 0.0f, 1.0f};
-
-const static glm::vec3 AXES[] = {AXIS_X, AXIS_Y, AXIS_Z};
-
 struct HistoricEvent {
     enum Type { NONE, TRANSLATE, ROTATE, SCALE, ADD, REMOVE } type;
     std::vector<gpu::Node *> nodes;
@@ -23,10 +16,13 @@ struct HistoricEvent {
         glm::vec3 scale;
     };
 };
+
+#ifndef EMSCRIPTEN
 static_assert(sizeof(HistoricEvent) == 48);
 static_assert(sizeof(gpu::Node *) == 8);
 static_assert(sizeof(std::vector<gpu::Node *>) == 24);
 static_assert(sizeof(std::list<gpu::Node *>) == 24);
+#endif
 
 struct IEditor {
     virtual void nodeSelected(gpu::Node *node) = 0;
@@ -57,9 +53,9 @@ struct Editor : public window::IMouseListener,
     bool keyUp(int key, int mods) override;
     void update(float dt);
     const glm::mat4 &view();
-    void addNode(gpu::Node *node);
-    void removeNode(gpu::Node *node);
-    void selectNode(gpu::Node *node);
+    gpu::Node *addNode(gpu::Node *node);
+    gpu::Node *removeNode(gpu::Node *node);
+    gpu::Node *selectNode(gpu::Node *node);
 
     void registerIEditor(IEditor *iEditor) { _iEditor = iEditor; }
 
@@ -74,15 +70,21 @@ struct Editor : public window::IMouseListener,
 
     gpu::Node *selectedNode() { return _selectedNode; }
     gpu::Node *startTranslation();
-    void translateSelected(const glm::vec3 &translation);
-    void rotateSelected(const glm::quat &rotation);
-    void scaleSelected(const glm::vec3 &scale);
+    bool translateSelected(const glm::vec3 &translation);
+    bool rotateSelected(const glm::quat &rotation);
+    bool scaleSelected(const glm::vec3 &scale);
 
     void setCurrentView(const CameraView &cameraView);
     void setTargetView(const CameraView &cameraView);
 
     void setTStep(float tstep) { _tstep = tstep; }
     void setRStep(float rstep) { _rstep = rstep; }
+
+    bool hasHistory();
+    void clearHistory();
+
+    void enable();
+    void disable();
 
   private:
     HistoricEvent &emplaceHistoricEvent(HistoricEvent::Type type);
@@ -98,7 +100,7 @@ struct Editor : public window::IMouseListener,
     float _rstep{0.0f};
     bool _dirtyView{true};
     glm::vec3 _translation;
-    glm::vec3 _rotation;
+    glm::quat _rotation;
     // glm::vec3 _scale;
     std::list<HistoricEvent> historicEvents;
     std::list<HistoricEvent> futureEvents;
@@ -106,4 +108,5 @@ struct Editor : public window::IMouseListener,
     IEditor *_iEditor{nullptr};
     gpu::Node *_selectedNode{nullptr};
     gpu::Node *_carbonNode{nullptr};
+    bool _enabled{true};
 };
