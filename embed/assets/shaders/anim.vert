@@ -6,18 +6,26 @@ layout (location=2) in vec2 aUV;
 layout (location=3) in uvec4 aJoints;
 layout (location=4) in vec4 aWeights;
 
+layout (std140) uniform CameraBlock
+{
+    mat4 u_projection;
+    mat4 u_view;
+    vec3 u_cameraPos;
+};
+//uniform mat4 u_projection;
+//uniform mat4 u_view;
+uniform mat4 u_model;
+
 const int MAX_BONES = 32;
 const int MAX_BONE_INFLUENCE = 4;
 layout (std140) uniform SkinBlock {
     mat4 u_bones[MAX_BONES];
 };
 
-uniform mat4 u_projection;
-uniform mat4 u_view;
-uniform mat4 u_model;
-
 out vec3 N;
 out vec2 UV;
+out vec3 C;
+out vec3 P;
 
 /*out vec3 color;
 const vec3 colors[6] = vec3[](
@@ -41,6 +49,8 @@ void main()
     UV = aUV;
     vec3 p = vec3(world * vec4(aPos, 1.0));
     N = normalize(vec3(world * vec4(aNormal, 0.0)));
+    C = u_cameraPos;
+    P = p;
 
     /*vec3 vertColor = vec3(0.0);
     for(int i=0; i < MAX_BONE_INFLUENCE; ++i)

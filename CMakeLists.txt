@@ -42,14 +42,21 @@ add_library(bytesized
     src/console.cpp
     src/editor.cpp
     src/gui.cpp
-    src/physics.cpp
     src/engine.cpp
-    src/primitive.cpp
+    src/gpu_primitive.cpp
     src/geom_primitive.cpp
+    src/geom_plane.cpp
+    src/geom_sphere.cpp
+    src/geom_aabb.cpp
+    src/geom_obb.cpp
     src/polygonize.cpp
     src/simplex_noise.cpp
     src/geom_convexhull.cpp
     src/geom_collision.cpp
+    src/camera.cpp
+    src/character.cpp
+    src/platformer.cpp
+    src/skydome.cpp
 )
 
 add_subdirectory(embed)
@@ -66,5 +73,4 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 endif()
 target_link_libraries(bytesized PUBLIC ${LIBS})
 
-
-include(cmake/API.cmake)
+add_subdirectory(import)

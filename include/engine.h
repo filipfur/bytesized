@@ -1,19 +1,20 @@
 #pragma once
 
 #include "assets.h"
-#include "cameraview.h"
+#include "camera.h"
 #include "clicknpick.h"
 #include "console.h"
 #include "editor.h"
+#include "geom_primitive.h"
 #include "gui.h"
 #include "persist.h"
 #include "window.h"
 #include <list>
 
-struct IApplication {
-    virtual void init(int drawableWidth, int drawableHeight) = 0;
-    virtual bool update(float dt) = 0;
-    // virtual void draw() = 0;
+struct IGame {
+    virtual void init() = 0;
+    virtual void update(float dt) = 0;
+    virtual void draw() = 0;
 };
 
 struct Panel {
@@ -29,22 +30,23 @@ struct Engine : public window::IEngine,
                 public IClickNPick,
                 public persist::IPersist {
 
-    Engine(Editor &editor_, Console &console_, int windowWidth, int windowHeight)
-        : _clickNPick{this}, _editor{editor_}, _console{console_}, _windowWidth{windowWidth},
-          _windowHeight{windowHeight} {
+    Engine(Camera &camera_, Editor &editor_, Console &console_, int windowWidth, int windowHeight)
+        : _camera{camera_}, _editor{editor_}, _console{console_}, _clickNPick{this},
+          _windowWidth{windowWidth}, _windowHeight{windowHeight} {
         _console.registerIConsole(this);
         _editor.registerIEditor(this);
-        window::registerApplication(this);
+        window::registerEngine(this);
         window::registerKeyListener(this);
         persist::registerIPersist(this);
     }
-
-    void setIApplication(IApplication *app) { _app = app; }
 
     void init(int drawableWidth, int drawableHeight) override;
     bool update(float dt) override;
     void resize(int drawableWidth, int drawableHeight) override;
     void draw() override;
+
+    void startGame(IGame *iGame);
+    void endGame();
 
     bool keyDown(int key, int mods) override;
     bool keyUp(int key, int mods) override;
@@ -54,12 +56,12 @@ struct Engine : public window::IEngine,
 
     void listNodes() override;
     bool spawnNode(const char *name) override;
-    bool setNodeTranslation(const glm::vec3 &) override;
-    bool setNodeRotation(const glm::quat &) override;
-    bool setNodeScale(const glm::vec3 &) override;
-    bool applyNodeTranslation(const glm::vec3 &) override;
-    bool applyNodeRotation(const glm::quat &) override;
-    bool applyNodeScale(const glm::vec3 &) override;
+    bool setNodeTranslation(const glm::ivec3 &, const glm::vec3 &) override;
+    bool setNodeRotation(const glm::ivec3 &, const glm::vec3 &) override;
+    bool setNodeScale(const glm::ivec3 &, const glm::vec3 &) override;
+    bool applyNodeTranslation(const glm::ivec3 &, const glm::vec3 &) override;
+    bool applyNodeRotation(const glm::ivec3 &, const glm::vec3 &) override;
+    bool applyNodeScale(const glm::ivec3 &, const glm::vec3 &) override;
     bool openSaveFile(const char *fpath) override;
     bool saveSaveFile(const char *fpath) override;
     bool openScene(size_t index) override;
@@ -73,13 +75,17 @@ struct Engine : public window::IEngine,
     void nodeTransformed(gpu::Node *node) override;
     gpu::Node *cycleNode(gpu::Node *prev) override;
 
+    void attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dynamic);
+    void attachController(gpu::Node *node, geom::Geometry::Type type);
+
     void unstage();
     void stage(const gpu::Scene &scene);
 
     assets::Collection *addCollection(const library::Collection &collection);
+    assets::Collection *loadGLB(const uint8_t *data);
     assets::Collection *findCollection(const char *name);
 
-    bool assignPanel(Panel::Type type, void *ptr);
+    Panel *assignPanel(Panel::Type type, void *ptr);
     bool openPanel(size_t index);
     void changePanel(Panel *panel);
 
@@ -90,19 +96,22 @@ struct Engine : public window::IEngine,
 
     bool saveNodeInfo(gpu::Node *node, uint32_t &info) override;
     bool saveNodeExtra(gpu::Node *node, uint32_t &extra) override;
-    gpu::Scene *loadedScene(const char *name) override;
-    bool loadedEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info, uint32_t extra) override;
+    gpu::Scene *loadScene(const char *name) override;
+    bool loadEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info, uint32_t extra) override;
+
+    void loadLastSession();
 
     ~Engine();
 
-    ClickNPick _clickNPick;
+    Camera &_camera;
     Editor &_editor;
     Console &_console;
+    ClickNPick _clickNPick;
     int _windowWidth;
     int _windowHeight;
     int _drawableWidth;
     int _drawableHeight;
-    IApplication *_app{nullptr};
+    IGame *_iGame{nullptr};
     gpu::ShaderProgram *shaderProgram;
     gpu::ShaderProgram *animProgram;
     gpu::ShaderProgram *textProgram;
@@ -114,9 +123,9 @@ struct Engine : public window::IEngine,
     std::vector<gpu::Node *> textNodes;
     GUI gui;
     std::list<assets::Collection> _collections;
-    std::list<persist::SaveFile> _saveFiles;
-    persist::SaveFile *_saveFile{nullptr};
-    Panel _panels[9];
+    persist::SaveFile _saveFile;
+    Panel _panels[10];
+    Panel *_panel{nullptr};
     bool _blockMode{false};
     glm::mat4 perspectiveProjection;
     std::list<Vector> vectors;

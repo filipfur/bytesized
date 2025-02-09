@@ -25,7 +25,7 @@ struct ClickNPick : public window::IMouseListener, public window::IMouseMotionLi
     ClickNPick(IClickNPick *iClickNPick_) : iClickNPick{iClickNPick_} {}
 
     void create(uint32_t width, uint32_t height, gpu::Shader *vertexShader,
-                const glm::mat4 &projection, float scale) {
+                gpu::Shader *animVertexShader, const glm::mat4 &projection, float scale) {
         window::registerMouseListener(this);
         window::registerMouseMotionListener(this);
         _width = width;
@@ -38,12 +38,19 @@ struct ClickNPick : public window::IMouseListener, public window::IMouseMotionLi
         fbo->createRenderBufferDS(width * scale, height * scale);
         fbo->checkStatus();
         fbo->unbind();
+        gpu::Shader *clickNPickShader = gpu::createShader(GL_FRAGMENT_SHADER, clickNPickFrag);
         shaderProgram = gpu::createShaderProgram(
-            vertexShader, gpu::createShader(GL_FRAGMENT_SHADER, clickNPickFrag),
-            {{"u_projection", projection},
-             {"u_view", glm::mat4{1.0f}},
-             {"u_model", glm::mat4{1.0f}},
-             {"u_object_id", 0.0f}});
+            vertexShader, clickNPickShader, {{"u_model", glm::mat4{1.0f}}, {"u_object_id", 0.0f}});
+        gpu::builtinUBO(gpu::UBO_CAMERA)->bindShaders({shaderProgram});
+        if (animVertexShader) {
+            animProgram = gpu::createShaderProgram(animVertexShader, clickNPickShader,
+                                                   {{"u_projection", projection},
+                                                    {"u_view", glm::mat4{1.0f}},
+                                                    {"u_model", glm::mat4{1.0f}},
+                                                    {"u_object_id", 0.0f}});
+            gpu::builtinUBO(gpu::UBO_SKINNING)->bindShaders({animProgram});
+            gpu::builtinUBO(gpu::UBO_CAMERA)->bindShaders({animProgram});
+        }
     }
 
     void registerNode(gpu::Node *node) {
@@ -76,11 +83,29 @@ struct ClickNPick : public window::IMouseListener, public window::IMouseMotionLi
         glGetIntegerv(GL_VIEWPORT, vp);
         glViewport(0, 0, _width * _scale, _height * _scale);
         shaderProgram->use();
-        shaderProgram->uniforms.at("u_view") << view;
         for (uint8_t i{0}; i < CLICKNPICK_COUNT; ++i) {
             if (auto node = nodes[i]) {
+                if (node->skin) {
+                    continue;
+                }
                 shaderProgram->uniforms.at("u_object_id") << static_cast<float>(i + 1);
                 node->render(shaderProgram);
+            } else {
+                break;
+            }
+        }
+        if (animProgram) {
+            animProgram->use();
+            animProgram->uniforms.at("u_view") << view;
+            for (uint8_t i{0}; i < CLICKNPICK_COUNT; ++i) {
+                if (auto node = nodes[i]) {
+                    if (node->skin) {
+                        animProgram->uniforms.at("u_object_id") << static_cast<float>(i + 1);
+                        node->render(animProgram);
+                    }
+                } else {
+                    break;
+                }
             }
         }
         glReadPixels((int)(mx * _scale), (int)(my * _scale), 1, 1, GL_RED, GL_UNSIGNED_BYTE,
@@ -109,6 +134,7 @@ struct ClickNPick : public window::IMouseListener, public window::IMouseMotionLi
     uint32_t _height;
     float _scale;
     gpu::ShaderProgram *shaderProgram{nullptr};
+    gpu::ShaderProgram *animProgram{nullptr};
     gpu::Framebuffer *fbo{nullptr};
     gpu::Node *nodes[CLICKNPICK_COUNT] = {};
     float mx;

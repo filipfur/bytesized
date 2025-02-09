@@ -19,34 +19,62 @@ enum ColorParameter {
     A = (1 << 2),
 };
 
-static bool _parseTransform(const char *commandLine, glm::vec3 &axis, bool &apply, float &value) {
+static bool _parseAxis(char c, glm::ivec3 &axis) {
+    switch (c) {
+    case 'x':
+    case 'X':
+        axis.x = 1;
+        break;
+    case 'y':
+    case 'Y':
+        axis.y = 1;
+        break;
+    case 'z':
+    case 'Z':
+        axis.z = 1;
+        break;
+    default:
+        return false;
+    }
+    return true;
+}
+
+static bool _parseTransform(const char *commandLine, glm::ivec3 &axis, bool &apply,
+                            glm::vec3 &value) {
     if (commandLine[2] == '.') {
-        switch (commandLine[3]) {
-        case 'x':
-        case 'X':
-            axis = glm::vec3{1, 0, 0};
-            break;
-        case 'y':
-        case 'Y':
-            axis = glm::vec3{0, 1, 0};
-            break;
-        case 'z':
-        case 'Z':
-            axis = glm::vec3{0, 0, 1};
-            break;
-        default:
+        size_t i = 3;
+        for (size_t j{0}; j < 3; ++j) {
+            if (!_parseAxis(commandLine[i], axis)) {
+                break;
+            }
+            ++i;
+        }
+        if (i == 3) {
             return false;
         }
-        if (commandLine[4] == '=') {
-            if (isdigit(commandLine[5]) || commandLine[5] == '-') {
-                value = atof(commandLine + 5);
+        if (commandLine[i] == '=') {
+            ++i;
+            if (isdigit(commandLine[i]) || commandLine[i] == '-') {
+                float f = atof(commandLine + i);
+                for (size_t j{0}; j < 3; ++j) {
+                    if (axis[j]) {
+                        value[j] = f;
+                    }
+                }
                 apply = false;
                 return true;
             }
-        } else if ((commandLine[4] == '+' || commandLine[4] == '-') && commandLine[5] == '=') {
-            if (isdigit(commandLine[6]) || commandLine[6] == '-') {
-                value = atof(commandLine + 6);
-                value = commandLine[4] == '+' ? value : -value;
+        } else if ((commandLine[i] == '+' || commandLine[i] == '-') && commandLine[i + 1] == '=') {
+            bool addition = (commandLine[i] == '+');
+            i += 2;
+            if (isdigit(commandLine[i]) || commandLine[i] == '-') {
+                float f = atof(commandLine + i);
+                for (size_t j{0}; j < 3; ++j) {
+                    if (axis[j]) {
+                        value[j] = f;
+                    }
+                }
+                value = addition ? value : -value;
                 apply = true;
                 return true;
             }
@@ -106,23 +134,20 @@ bool Console::evaluate() {
         return _iConsole->saveSaveFile(commandLine + strlen(":w "));
     } else if (starts_with(commandLine, ":t.") || starts_with(commandLine, ":r.") ||
                starts_with(commandLine, ":s.")) {
-        glm::vec3 axis;
+        glm::ivec3 axis{0, 0, 0};
         bool apply;
-        float value;
+        glm::vec3 value{0.0f, 0.0f, 0.0f};
         if (_parseTransform(commandLine, axis, apply, value)) {
             switch (commandLine[1]) {
             case 't':
-                return apply ? _iConsole->applyNodeTranslation(axis * value)
-                             : _iConsole->setNodeTranslation(axis * value);
+                return apply ? _iConsole->applyNodeTranslation(axis, value)
+                             : _iConsole->setNodeTranslation(axis, value);
             case 'r':
-                return apply
-                           ? _iConsole->applyNodeRotation(glm::angleAxis(glm::radians(value), axis))
-                           : _iConsole->setNodeRotation(glm::angleAxis(glm::radians(value), axis));
+                return apply ? _iConsole->applyNodeRotation(axis, value)
+                             : _iConsole->setNodeRotation(axis, value);
             case 's':
-                return apply ? _iConsole->applyNodeScale(glm::vec3{1.0f, 1.0f, 1.0f} +
-                                                         axis * (value - 1.0f))
-                             : _iConsole->setNodeScale(glm::vec3{1.0f, 1.0f, 1.0f} +
-                                                       axis * (value - 1.0f));
+                return apply ? _iConsole->applyNodeScale(axis, value)
+                             : _iConsole->setNodeScale(axis, value);
             }
         }
     } else if (starts_with(commandLine, ":wq")) {

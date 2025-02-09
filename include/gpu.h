@@ -2,6 +2,7 @@
 
 #include "bdf.h"
 #include "color.h"
+#include "ecs.h"
 #include "library_types.h"
 #include "opengl.h"
 #include "recycler.hpp"
@@ -14,6 +15,7 @@
 #include <functional>
 #include <glm/glm.hpp>
 #include <string>
+#include <unordered_set>
 
 namespace gpu {
 
@@ -38,8 +40,8 @@ struct Primitive {
 struct UniformBuffer {
     uint32_t *id;
     uint32_t bindingPoint;
-    size_t length;
-    void *data;
+    const char *label;
+    void bindShaders(std::initializer_list<gpu::ShaderProgram *> shaders);
 
     void bind();
     void unbind();
@@ -61,7 +63,18 @@ struct Node : TRS {
     bool hidden;
     struct Skin *skin;
     bool wireframe;
-    void *extra;
+    ecs::Entity *entity;
+    Node *find(std::function<bool(Node *)> callback) {
+        if (callback(this)) {
+            return this;
+        }
+        for (Node *child : children) {
+            if (auto n = child->find(callback)) {
+                return n;
+            }
+        }
+        return nullptr;
+    }
 
     void render(ShaderProgram *shaderProgram);
     Node *childByName(const char *name);
@@ -151,6 +164,7 @@ void freeText(gpu::Text *text);
 void freeTexture(Texture *texture);
 
 Material *createMaterial();
+Material *createMaterial(gpu::Texture *texture);
 Material *createMaterial(const library::Material &material);
 void freeMaterial(Material *material);
 
@@ -164,7 +178,8 @@ Scene *createScene();
 Scene *createScene(const library::Scene &scene);
 void freeScene(gpu::Scene *scene);
 
-UniformBuffer *createUniformBuffer(uint32_t bindingPoint, uint32_t len, void *data = NULL);
+UniformBuffer *createUniformBuffer(uint32_t bindingPoint, const char *label, uint32_t len,
+                                   void *data = NULL);
 void freeUniformBuffer(UniformBuffer *ubo);
 
 Shader *createShader(uint32_t type, const char *src);
@@ -172,5 +187,41 @@ void freeShader(Shader *shader);
 ShaderProgram *createShaderProgram(Shader *vertex, Shader *fragment,
                                    std::unordered_map<std::string, Uniform> &&uniforms);
 void freeShaderProgram(ShaderProgram *shaderProgram);
+
+struct CameraBlock {
+    glm::mat4 projection;
+    glm::mat4 view;
+    glm::vec3 cameraPos;
+    float padding;
+};
+void CameraBlock_setProjection(const glm::mat4 &projection);
+void CameraBlock_setViewPos(const glm::mat4 &view, const glm::vec3 &pos);
+static constexpr int MAX_BONES = 32;
+struct SkinBlock {
+    glm::mat4 bones[MAX_BONES];
+};
+SkinBlock &getSkinBlock();
+
+struct LightBlock {
+    glm::vec3 lightHigh;
+    float pad0;
+    glm::vec3 lightLow;
+    float pad1;
+};
+void LightBlock_setLightColor(const Color &high, const Color &low);
+
+struct GUIBlock {
+    glm::mat4 projection;
+    glm::mat4 view;
+};
+
+enum BuiltinUBO {
+    UBO_CAMERA,
+    UBO_SKINNING,
+    UBO_LIGHT,
+    // UBO_GUI,
+};
+UniformBuffer *builtinUBO(BuiltinUBO bultinUBO);
+void createBuiltinUBOs();
 
 }; // namespace gpu

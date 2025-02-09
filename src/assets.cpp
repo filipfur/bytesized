@@ -6,16 +6,22 @@ assets::Collection::Collection() {}
 
 assets::Collection::Collection(const library::Collection &collection)
     : scene{gpu::createScene(*collection.scene)} {
-    LOG_INFO("Collection: #animations=%u #materials=%u"
+    LOG_INFO("Collection %s: #animations=%u #materials=%u"
              " #meshes=%u #nodes=%u #textures=%u",
-             collection.animations_count, collection.materials_count, collection.meshes_count,
-             collection.nodes_count, collection.textures_count);
+             collection.scene->name.c_str(), collection.animations_count,
+             collection.materials_count, collection.meshes_count, collection.nodes_count,
+             collection.textures_count);
     for (size_t i{0}; i < collection.animations_count; ++i) {
-        animations.emplace_back(animation::createAnimation(collection.animations[i]));
+        animations.emplace_back(animation::createAnimation(collection.animations[i], nullptr));
     }
     if (!animations.empty()) {
-        animations.front()->start();
+        if (auto idleAnim = animationByName("Idle")) {
+            idleAnim->start();
+        } else {
+            animations.front()->start();
+        }
     }
+
     assert(scene->libraryScene != nullptr);
     assert(scene->libraryScene->gpuInstance == scene);
     for (gpu::Node *node : scene->nodes) {

@@ -15,12 +15,12 @@ struct IConsole {
     virtual bool selectNode(size_t /*index*/) { return false; }
     virtual void listNodes() {}
     virtual bool spawnNode(const char * /*name*/) { return false; }
-    virtual bool setNodeTranslation(const glm::vec3 &) { return false; }
-    virtual bool setNodeRotation(const glm::quat &) { return false; }
-    virtual bool setNodeScale(const glm::vec3 &) { return false; }
-    virtual bool applyNodeTranslation(const glm::vec3 &) { return false; }
-    virtual bool applyNodeRotation(const glm::quat &) { return false; }
-    virtual bool applyNodeScale(const glm::vec3 &) { return false; }
+    virtual bool setNodeTranslation(const glm::ivec3 &, const glm::vec3 &) { return false; }
+    virtual bool setNodeRotation(const glm::ivec3 &, const glm::vec3 &) { return false; }
+    virtual bool setNodeScale(const glm::ivec3 &, const glm::vec3 &) { return false; }
+    virtual bool applyNodeTranslation(const glm::ivec3 &, const glm::vec3 &) { return false; }
+    virtual bool applyNodeRotation(const glm::ivec3 &, const glm::vec3 &) { return false; }
+    virtual bool applyNodeScale(const glm::ivec3 &, const glm::vec3 &) { return false; }
     virtual void quit(bool /*force*/) {}
 };
 

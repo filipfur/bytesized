@@ -1,41 +1,43 @@
 #pragma once
 
+#include <functional>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 struct TRS {
     template <typename T> struct Attribute {
-        Attribute(TRS *trs, const T &t) : _trs{trs}, _t{t}, x{_t.x}, y{_t.y}, z{_t.z} {}
+        Attribute(const std::function<void()> &callback, const T &t)
+            : _callback{callback}, _t{t}, x{_t.x}, y{_t.y}, z{_t.z} {}
         Attribute &operator=(const T &t) {
             _t = t;
-            _trs->invalidate();
+            _callback();
             return *this;
         }
         Attribute &operator+=(const T &t) {
             _t += t;
-            _trs->invalidate();
+            _callback();
             return *this;
         }
         Attribute &operator-=(const T &t) {
             _t -= t;
-            _trs->invalidate();
+            _callback();
             return *this;
         }
         Attribute &operator*=(const T &t) {
             _t *= t;
-            _trs->invalidate();
+            _callback();
             return *this;
         }
         Attribute &operator/=(const T &t) {
             _t /= t;
-            _trs->invalidate();
+            _callback();
             return *this;
         }
 
         const T &data() const { return _t; }
         T &data() { return _t; }
 
-        TRS *_trs;
+        std::function<void()> _callback;
         T _t;
         const float &x;
         const float &y;
@@ -43,12 +45,19 @@ struct TRS {
     };
 
     TRS()
-        : translation{this, {0.0f, 0.0f, 0.0f}}, rotation{this, {1.0f, 0.0f, 0.0f, 0.0f}},
-          scale{this, {1.0f, 1.0f, 1.0f}} {}
+        : translation{[this]() { invalidate(); }, {0.0f, 0.0f, 0.0f}},
+          scale{[this]() { invalidate(); }, {1.0f, 1.0f, 1.0f}},
+          rotation{[this]() { invalidate(); }, {1.0f, 0.0f, 0.0f, 0.0f}},
+          euler{[this]() {
+                    _invalidEuler = true;
+                    invalidate();
+                },
+                {0.0f, 0.0f, 0.0f}} {}
 
     Attribute<glm::vec3> translation;
-    Attribute<glm::quat> rotation;
     Attribute<glm::vec3> scale;
+    Attribute<glm::quat> rotation;
+    Attribute<glm::vec3> euler;
 
     glm::mat4 &model();
 
@@ -73,4 +82,5 @@ struct TRS {
     glm::mat4 _model{1.0f};
     bool _valid{false};
     TRS *_parent{nullptr};
+    bool _invalidEuler{false};
 };

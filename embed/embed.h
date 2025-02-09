@@ -21,6 +21,7 @@ extern const uint32_t __png__tframe_len;
 extern const char __shaders__vert_screen[];
 extern const char __shaders__vert_object[];
 extern const char __shaders__vert_anim[];
+extern const char __shaders__vert_ui[];
 extern const char __shaders__vert_text[];
 extern const char __shaders__frag_object[];
 extern const char __shaders__frag_anim[];

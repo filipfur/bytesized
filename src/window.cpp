@@ -18,7 +18,7 @@ static const int PERIOD_TIME_MS = 1000 / UPDATE_FREQ;
 static constexpr float DELTA_TIME_S = 1.0f / static_cast<float>(UPDATE_FREQ);
 
 static const size_t BINDERS_MAX = 4;
-static window::IEngine *_iApplications[BINDERS_MAX] = {};
+static window::IEngine *_iApplication;
 #define __WBINDER(symbol)                                                                          \
     static window::I##symbol *_i##symbol[BINDERS_MAX] = {};                                        \
     static bool _d##symbol[BINDERS_MAX] = {};
@@ -57,8 +57,7 @@ void window::create(const char *title, int winX, int winY, bool fullscreen) {
 
     SDL_StopTextInput();
 
-    FOR_ITH(_iApplications,
-            if (_iApplications[i]) _iApplications[i]->init(drawableWidth, drawableHeight);)
+    _iApplication->init(drawableWidth, drawableHeight);
 }
 
 void window::loop_forever() {
@@ -67,8 +66,8 @@ void window::loop_forever() {
     static uint32_t lastTick{0};
     static uint32_t deltaTicks{0};
     static uint32_t fpsTime{0};
-    static uint16_t fpsCounters[BINDERS_MAX] = {};
-    static float fpsAcc[BINDERS_MAX] = {};
+    static uint16_t fpsCounter{0};
+    static float fpsAcc{0};
     while (running) {
         if (SDL_PollEvent(&event)) {
             switch (event.type) {
@@ -148,40 +147,33 @@ void window::loop_forever() {
         deltaTicks += (tick - lastTick);
         lastTick = tick;
         if (tick > fpsTime + 100) {
-            FOR_ITH(
-                _iApplications, if (_iApplications[i]) {
-                    fpsAcc[i] = fpsAcc[i] * 0.5f + fpsCounters[i] * 5.0f;
-                    _iApplications[i]->fps(fpsAcc[i]);
-                    fpsCounters[i] = 0;
-                })
+            if (_iApplication) {
+                fpsAcc = fpsAcc * 0.5f + fpsCounter * 5.0f;
+                _iApplication->fps(fpsAcc);
+                fpsCounter = 0;
+            }
             fpsTime = fpsTime + 100;
         }
-        bool updated[BINDERS_MAX] = {};
+        bool updated = false;
         while (deltaTicks >= PERIOD_TIME_MS) {
-            FOR_ITH(
-                _iApplications, if (_iApplications[i] && _iApplications[i]->update(DELTA_TIME_S)) {
-                    updated[i] = true;
-                })
+            if (_iApplication->update(DELTA_TIME_S)) {
+                updated = true;
+            }
             deltaTicks -= PERIOD_TIME_MS;
             Time::increment(Time::fromMilliseconds(PERIOD_TIME_MS));
         }
-        FOR_ITH(
-            _iApplications, if (_iApplications[i] && updated[i]) {
-                _iApplications[i]->draw();
-                ++fpsCounters[i];
-                SDL_GL_SwapWindow(_window);
-            })
+        if (updated) {
+            _iApplication->draw();
+            ++fpsCounter;
+            SDL_GL_SwapWindow(_window);
+        }
         SDL_Delay(1);
     }
     SDL_GL_DeleteContext(_glContext);
     SDL_Quit();
 }
 
-void window::registerApplication(window::IEngine *iApplication) {
-    FOR_ITH(
-        _iApplications, if (_iApplications[i]) { continue; } _iApplications[i] = iApplication;
-        break;)
-}
+void window::registerEngine(window::IEngine *iApplication) { _iApplication = iApplication; }
 
 #define __WBINDER(symbol)                                                                          \
     void window::register##symbol(I##symbol *i##symbol) {                                          \
@@ -193,18 +185,10 @@ void window::registerApplication(window::IEngine *iApplication) {
             break;                                                                                 \
         }                                                                                          \
     }                                                                                              \
-    void window::disable##symbol(I##symbol *i##symbol) {                                           \
+    void window::disable##symbol(I##symbol *i##symbol, bool disabled) {                            \
         for (size_t i{0}; i < BINDERS_MAX; ++i) {                                                  \
             if (_i##symbol[i] == i##symbol) {                                                      \
-                _d##symbol[i] = true;                                                              \
-                break;                                                                             \
-            }                                                                                      \
-        }                                                                                          \
-    }                                                                                              \
-    void window::enable##symbol(I##symbol *i##symbol) {                                            \
-        for (size_t i{0}; i < BINDERS_MAX; ++i) {                                                  \
-            if (_i##symbol[i] == i##symbol) {                                                      \
-                _d##symbol[i] = false;                                                             \
+                _d##symbol[i] = disabled;                                                          \
                 break;                                                                             \
             }                                                                                      \
         }                                                                                          \

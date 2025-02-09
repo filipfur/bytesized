@@ -44,11 +44,10 @@ struct ITextListener {
 };
 
 void create(const char *title, int winX, int winY, bool fullscreen);
-void registerApplication(IEngine *iApplication);
+void registerEngine(IEngine *iApplication);
 #define __WBINDER(symbol)                                                                          \
     void register##symbol(I##symbol *i##symbol);                                                   \
-    void disable##symbol(I##symbol *i##symbol);                                                    \
-    void enable##symbol(I##symbol *i##symbol);
+    void disable##symbol(I##symbol *i##symbol, bool disabled);
 __WBINDERS
 #undef __WBINDER
 

@@ -10,29 +10,13 @@
 
 namespace primer {
 
-const static glm::vec3 UP{0.0f, 1.0f, 0.0f};
-const static glm::vec3 AXIS_X{1.0f, 0.0f, 0.0f};
-const static glm::vec3 AXIS_Y{0.0f, 1.0f, 0.0f};
-const static glm::vec3 AXIS_Z{0.0f, 0.0f, 1.0f};
-const static glm::vec3 AXES[] = {AXIS_X, AXIS_Y, AXIS_Z};
-
-inline static glm::vec3 eulerDegrees(const glm::quat &q) {
-    /*
-    float y, p, r;
-    glm::extractEulerAngleYXZ(glm::mat4_cast(q), y, p, r);
-    return glm::vec3{p, y, r};
-    */
-    return glm::eulerAngles(q) / glm::pi<float>() * 180.0f;
-}
-
-inline static glm::vec3 eulerDegrees2(const glm::quat &q) {
-    /*
-    float y, p, r;
-    glm::extractEulerAngleYXZ(glm::mat4_cast(q), y, p, r);
-    return glm::vec3{p, y, r};
-    */
-    return glm::eulerAngles(q) / glm::pi<float>() * 180.0f;
-}
+static constexpr glm::vec3 AXIS_X{1.0f, 0.0f, 0.0f};
+static constexpr glm::vec3 AXIS_Y{0.0f, 1.0f, 0.0f};
+static constexpr glm::vec3 AXIS_Z{0.0f, 0.0f, 1.0f};
+static constexpr glm::vec3 AXES[] = {AXIS_X, AXIS_Y, AXIS_Z};
+static constexpr glm::vec3 UP{AXIS_Y};
+static constexpr glm::vec3 RIGHT{AXIS_X};
+static constexpr glm::vec3 FORWARD{-AXIS_Z};
 
 inline static bool pointInTriangle(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &b,
                                    const glm::vec3 &c) {
@@ -108,10 +92,20 @@ inline static glm::quat quaternionFromDirection(const glm::vec3 &direction) {
 
 inline static glm::vec3 directionFromQuaternion(const glm::quat &quat) { return quat * UP; }
 
+inline static float angleBetween(const glm::vec2 &a, const glm::vec2 &b) {
+    return glm::atan2(b.y * a.x - b.x * a.y, b.x * a.x + b.y * a.y);
+}
+
 static constexpr float EPSILON = 1e-5f;
 inline static bool isNear(float a, float b) { return ((a > b) ? (a - b) : (b - a)) < EPSILON; }
 inline static bool isNear(const glm::vec3 &a, const glm::vec3 &b) {
     return isNear(a.x, b.x) && isNear(a.y, b.y) && isNear(a.z, b.z);
+}
+
+inline static std::pair<glm::vec3, glm::vec3> extentsCenter(const glm::vec3 min,
+                                                            const glm::vec3 max) {
+    const glm::vec3 e = (max - min) * 0.5f;
+    return {e, min + e};
 }
 
 constexpr glm::vec3 transformPoint(const glm::mat4 &m, const glm::vec3 &point);

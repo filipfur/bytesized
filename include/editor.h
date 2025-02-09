@@ -2,7 +2,7 @@
 
 #include "window.h"
 
-#include "cameraview.h"
+#include "camera.h"
 #include "gpu.h"
 #include <glm/glm.hpp>
 #include <list>
@@ -12,7 +12,7 @@ struct HistoricEvent {
     std::vector<gpu::Node *> nodes;
     union {
         glm::vec3 translation;
-        glm::quat rotation;
+        glm::vec3 euler;
         glm::vec3 scale;
     };
 };
@@ -38,7 +38,7 @@ struct Editor : public window::IMouseListener,
                 public window::IMouseWheelListener,
                 public window::IKeyListener {
 
-    Editor() {
+    Editor(Camera &camera) : _camera{camera} {
         window::registerMouseListener(this);
         window::registerMouseMotionListener(this);
         window::registerMouseWheelListener(this);
@@ -51,8 +51,6 @@ struct Editor : public window::IMouseListener,
     bool mouseScrolled(float x, float y) override;
     bool keyDown(int key, int mods) override;
     bool keyUp(int key, int mods) override;
-    void update(float dt);
-    const glm::mat4 &view();
     gpu::Node *addNode(gpu::Node *node);
     gpu::Node *removeNode(gpu::Node *node);
     gpu::Node *selectNode(gpu::Node *node);
@@ -64,18 +62,17 @@ struct Editor : public window::IMouseListener,
     enum class EditAxis { NONE, X, Y, Z };
     enum class EditMode { NONE, TRANSLATE, ROTATE, SCALE };
 
-    const CameraView &currentView() { return _currentView; }
-
-    const CameraView &targetView() { return _targetView; }
+    // const CameraView &currentView() { return _currentView; }
+    // const CameraView &targetView() { return _targetView; }
 
     gpu::Node *selectedNode() { return _selectedNode; }
     gpu::Node *startTranslation();
     bool translateSelected(const glm::vec3 &translation);
-    bool rotateSelected(const glm::quat &rotation);
+    bool rotateSelected(const glm::vec3 &rotation);
     bool scaleSelected(const glm::vec3 &scale);
 
-    void setCurrentView(const CameraView &cameraView);
-    void setTargetView(const CameraView &cameraView);
+    // void setCurrentView(const CameraView &cameraView);
+    // void setTargetView(const CameraView &cameraView);
 
     void setTStep(float tstep) { _tstep = tstep; }
     void setRStep(float rstep) { _rstep = rstep; }
@@ -83,8 +80,7 @@ struct Editor : public window::IMouseListener,
     bool hasHistory();
     void clearHistory();
 
-    void enable();
-    void disable();
+    void disable(bool disabled);
 
   private:
     HistoricEvent &emplaceHistoricEvent(HistoricEvent::Type type);
@@ -94,13 +90,12 @@ struct Editor : public window::IMouseListener,
     CameraMode _cameraMode{CameraMode::PLANAR};
     EditMode _editMode{EditMode::NONE};
     EditAxis _editAxis{EditAxis::NONE};
-    CameraView _targetView{{0.0f, 0.0f, 0.0f}, glm::radians(45.0f), glm::radians(15.0f), 10.0f};
-    CameraView _currentView{_targetView};
+    Camera &_camera;
     float _tstep{0.0f};
     float _rstep{0.0f};
     bool _dirtyView{true};
     glm::vec3 _translation;
-    glm::quat _rotation;
+    glm::vec3 _euler;
     // glm::vec3 _scale;
     std::list<HistoricEvent> historicEvents;
     std::list<HistoricEvent> futureEvents;
@@ -108,5 +103,5 @@ struct Editor : public window::IMouseListener,
     IEditor *_iEditor{nullptr};
     gpu::Node *_selectedNode{nullptr};
     gpu::Node *_carbonNode{nullptr};
-    bool _enabled{true};
+    bool _disabled{true};
 };

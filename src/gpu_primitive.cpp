@@ -1,4 +1,4 @@
-#include "primitive.h"
+#include "gpu_primitive.h"
 
 constexpr gpu::Sprite sprite;
 constexpr gpu::Plane<1, 1> plane;

@@ -7,18 +7,9 @@
 #include <cassert>
 #include <list>
 
-static const size_t IPERSIST_MAX = 4;
+static persist::IPersist *_iPersist{nullptr};
 
-static persist::IPersist *_iPersist[IPERSIST_MAX] = {};
-
-void persist::registerIPersist(IPersist *iPersist) {
-    for (size_t i{0}; i < IPERSIST_MAX; ++i) {
-        if (_iPersist[i] == nullptr) {
-            _iPersist[i] = iPersist;
-            break;
-        }
-    }
-}
+void persist::registerIPersist(IPersist *iPersist) { _iPersist = iPersist; }
 
 void persist::storeSession(const SessionData &sessionData) {
     FILE *file = fopen("session.bin", "w");
@@ -38,11 +29,11 @@ bool persist::loadSession(SessionData &sessionData) {
 }
 
 persist::World *persist::load(const char *path) {
-    std::string_view data = filesystem::loadFile(path);
-    if (data.length() == 0) {
+    const std::string_view _fileData = filesystem::loadFile(path);
+    if (_fileData.length() == 0) {
         return nullptr;
     }
-    return (World *)(data.data());
+    return (World *)(_fileData.data());
 }
 
 static char _buffer[1024 * 1024];
@@ -98,22 +89,12 @@ void persist::saveWorld(const char *fpath, const SaveFile &saveFile) {
         assert(nid != -1);
         entities[i].nodeId = nid;
         entities[i].translation = instance->translation.data();
-        entities[i].rotation = instance->rotation.data();
+        entities[i].rotation = instance->euler.data();
         entities[i].scale = instance->scale.data();
         entities[i].info = 0x0;
         entities[i].extra = 0x0;
-
-        for (size_t j{0}; j < IPERSIST_MAX; ++j) {
-            if (_iPersist[j] == nullptr || _iPersist[j]->saveNodeInfo(instance, entities[i].info)) {
-                break;
-            }
-        }
-        for (size_t j{0}; j < IPERSIST_MAX; ++j) {
-            if (_iPersist[j] == nullptr ||
-                _iPersist[j]->saveNodeExtra(instance, entities[i].extra)) {
-                break;
-            }
-        }
+        _iPersist->saveNodeInfo(instance, entities[i].info);
+        _iPersist->saveNodeExtra(instance, entities[i].extra);
         ++i;
     }
     persist::open(fpath);
@@ -152,35 +133,17 @@ bool persist::loadWorld(const char *fpath, SaveFile &saveFile) {
             auto &e = entities[i];
             persist::Scene *scene = world->scene(e.sceneId);
             persist::Node *node = scene->node(e.nodeId);
-            gpu::Scene *gpuScene{nullptr};
-            for (size_t j{0}; j < IPERSIST_MAX; ++j) {
-                if (_iPersist[j] == nullptr) {
-                    break;
-                }
-                gpuScene = _iPersist[j]->loadedScene(scene->name);
-                if (gpuScene) {
-                    break;
-                }
-            }
-            if (gpuScene) {
+            if (gpu::Scene *gpuScene = _iPersist->loadScene(scene->name)) {
                 if (auto gpuNode = gpuScene->nodeByName(node->name)) {
-                    auto *inst =
+                    gpu::Node *inst =
                         saveFile.nodes.emplace_back(gpu::createNode(*gpuNode->libraryNode));
                     inst->translation = e.translation;
-                    inst->rotation = e.rotation;
+                    inst->euler = e.rotation;
                     inst->scale = e.scale;
-                    if (e.info != 0 || e.extra != 0) {
+                    if (e.info != 0 || e.extra != 0 || inst->skin) {
                         ecs::Entity *entity = ecs::create_entity();
-                        inst->extra = entity;
-                        for (size_t j{0}; j < IPERSIST_MAX; ++j) {
-                            if (_iPersist[j] == nullptr) {
-                                break;
-                            }
-                            if (_iPersist[j]->loadedEntity(entity, inst, e.info, e.extra)) {
-                                // consumed
-                                break;
-                            }
-                        }
+                        inst->entity = entity;
+                        _iPersist->loadEntity(entity, inst, e.info, e.extra);
                     }
                 } else {
                     LOG_WARN("Failed to load node: %s\n", node->name);

@@ -3,10 +3,10 @@
 #define GLM_ENABLE_EXPERIMENTAL
 
 #include "debug.hpp"
+#include "gpu_primitive.h"
 #include "logging.h"
 #include "opengl.h"
 #include "primer.h"
-#include "primitive.h"
 #include "shader.h"
 #include "stb_image.h"
 #include <glm/gtc/type_ptr.hpp>
@@ -297,6 +297,13 @@ void gpu::freeText(gpu::Text *text) {
 
 gpu::Material *gpu::createMaterial() { return MATERIALS.acquire(); }
 
+gpu::Material *gpu::createMaterial(gpu::Texture *texture) {
+    gpu::Material *mat = MATERIALS.acquire();
+    mat->color = Color::white;
+    mat->textures.emplace(GL_TEXTURE0, texture);
+    return mat;
+}
+
 gpu::Material *gpu::createMaterial(const library::Material &material) {
     gpu::Material *mat = MATERIALS.acquire();
     bool noTex = true;
@@ -362,17 +369,16 @@ static gpu::Mesh *_createMesh(const library::Mesh &libraryMesh) {
             uint32_t vbo = *primitive->vbos.emplace_back(VBOS.acquire());
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER, libraryAttr->bufferView->length,
-                         libraryAttr->bufferView->buffer->data + libraryAttr->bufferView->offset,
-                         GL_STATIC_DRAW);
-            int size;
-            if (libraryAttr->type == library::Accessor::MAT4) {
-                assert(false);
+                         libraryAttr->bufferView->data(), GL_STATIC_DRAW);
+            int size = libraryAttr->type + 1;
+            assert(libraryAttr->type != library::Accessor::MAT4);
+            int stride;
+            if (libraryAttr->componentType == GL_FLOAT) {
+                stride = size * sizeof(float);
             } else {
-                size = libraryAttr->type + 1;
+                stride = size;
             }
-            int baseSize = libraryAttr->componentType == GL_FLOAT ? sizeof(float) : 1;
-            glVertexAttribPointer(j, size, libraryAttr->componentType, GL_FALSE, size * baseSize,
-                                  (void *)0);
+            glVertexAttribPointer(j, size, libraryAttr->componentType, GL_FALSE, stride, (void *)0);
             glEnableVertexAttribArray(j);
         }
         if (libraryPrimitive.indices) {
@@ -578,33 +584,71 @@ void gpu::Primitive::render() {
     glBindVertexArray(0);
 }
 
+void gpu::UniformBuffer::bindShaders(std::initializer_list<gpu::ShaderProgram *> shaders) {
+    bind();
+    for (auto &shader : shaders) {
+        bindBlock(shader, label);
+    }
+    bindBufferBase();
+    unbind();
+}
+
+static gpu::CameraBlock cameraBlock;
+
+void gpu::CameraBlock_setProjection(const glm::mat4 &projection) {
+    cameraBlock.projection = projection;
+    auto *ubo = builtinUBO(gpu::UBO_CAMERA);
+    ubo->bind();
+    ubo->bufferSubData(0, sizeof(gpu::CameraBlock::projection), &cameraBlock);
+}
+void gpu::CameraBlock_setViewPos(const glm::mat4 &view, const glm::vec3 &pos) {
+    cameraBlock.view = view;
+    cameraBlock.cameraPos = pos;
+    auto *ubo = builtinUBO(gpu::UBO_CAMERA);
+    ubo->bind();
+    ubo->bufferSubData(sizeof(glm::mat4), sizeof(glm::mat4) + sizeof(glm::vec3), &cameraBlock.view);
+}
+
+static gpu::SkinBlock skinBlock;
+gpu::SkinBlock &gpu::getSkinBlock() { return skinBlock; }
+
+static gpu::LightBlock lightBlock;
+void gpu::LightBlock_setLightColor(const Color &high, const Color &low) {
+    lightBlock.lightHigh = high.vec3();
+    lightBlock.lightLow = low.vec3();
+    auto *ubo = builtinUBO(gpu::UBO_LIGHT);
+    ubo->bind();
+    ubo->bufferData(sizeof(LightBlock), &lightBlock);
+}
+
+gpu::UniformBuffer *gpu::builtinUBO(BuiltinUBO bultinUBO) { return &UBOS.at(bultinUBO); }
+void gpu::createBuiltinUBOs() {
+    static const char *cameraBlockLabel = "CameraBlock";
+    static const char *skinBlockLabel = "SkinBlock";
+    // static const char *guiBlockLabel = "GUIBlock";
+    createUniformBuffer(UBO_CAMERA, cameraBlockLabel, sizeof(gpu::CameraBlock), &cameraBlock);
+    createUniformBuffer(UBO_SKINNING, skinBlockLabel, sizeof(gpu::SkinBlock), skinBlock.bones);
+    createUniformBuffer(UBO_LIGHT, "LightBlock", sizeof(gpu::LightBlock), &lightBlock);
+    // createUniformBuffer(UBO_GUI, guiBlockLabel, sizeof(gpu::SkinBlock), &cameraBlock);
+}
+
+static void _updateBonesArray(gpu::Node *node) {
+    const glm::mat4 globalWorldInverse = glm::inverse(node->model());
+    for (size_t j{0}; j < node->skin->joints.size() && j < gpu::MAX_BONES; ++j) {
+        skinBlock.bones[j] = globalWorldInverse * node->skin->joints.at(j)->model() *
+                             node->skin->invBindMatrices.at(j);
+    }
+}
+
 void gpu::Node::render(ShaderProgram *shaderProgram) {
     if (parent() == nullptr && !valid()) {
         invalidateRecursive(this);
     }
     if (skin) {
-        static UniformBuffer *skinUBO = nullptr;
-        static const int MAX_BONES = 32;
-        static glm::mat4 bones[MAX_BONES] = {};
-
-        if (skinUBO == nullptr) {
-            skinUBO = createUniformBuffer(1, sizeof(bones), bones);
-        }
-        static std::unordered_set<uint32_t> skinningShaders;
-        auto it = skinningShaders.find(shaderProgram->id);
-        if (it == skinningShaders.end()) {
-            skinUBO->bindBlock(shaderProgram, "SkinBlock");
-            skinUBO->bindBufferBase();
-            skinningShaders.emplace(shaderProgram->id);
-        }
-        const glm::mat4 globalWorldInverse = glm::inverse(model());
-        for (size_t j{0}; j < skin->joints.size() && j < MAX_BONES; ++j) {
-            bones[j] =
-                globalWorldInverse * skin->joints.at(j)->model() * skin->invBindMatrices.at(j);
-        }
-        skinUBO->bind();
-        skinUBO->bufferData(sizeof(bones), bones);
-        skinUBO->bufferSubData(64 * 30, sizeof(bones) - 64 * 30, bones + 30);
+        gpu::UniformBuffer *ubo = gpu::builtinUBO(gpu::UBO_SKINNING);
+        _updateBonesArray(this);
+        ubo->bind();
+        ubo->bufferData(sizeof(skinBlock), &skinBlock);
     }
     for (gpu::Node *child : children) {
         child->render(shaderProgram);
@@ -683,13 +727,12 @@ gpu::Node *gpu::Scene::nodeByName(const char *name) {
     return nullptr;
 }
 
-gpu::UniformBuffer *gpu::createUniformBuffer(uint32_t bindingPoint, uint32_t length, void *data) {
+gpu::UniformBuffer *gpu::createUniformBuffer(uint32_t bindingPoint, const char *label,
+                                             uint32_t length, void *data) {
     gpu::UniformBuffer *ubo = UBOS.acquire();
     ubo->id = VBOS.acquire();
-    ubo->length = length;
-    ubo->data = nullptr;
-    ubo->length = 0;
     ubo->bindingPoint = bindingPoint;
+    ubo->label = label;
     ubo->bind();
     ubo->bufferData(length, data);
     ubo->unbind();
@@ -702,8 +745,6 @@ void gpu::freeUniformBuffer(gpu::UniformBuffer *ubo) {
     ubo->unbind();
     VBOS.free(ubo->id);
     ubo->bindingPoint = 0;
-    ubo->data = nullptr;
-    ubo->length = 0;
     UBOS.free(ubo);
 }
 
@@ -721,11 +762,11 @@ void gpu::UniformBuffer::bindBufferBase() {
 }
 
 void gpu::UniformBuffer::bufferData(uint32_t length_, void *data_) {
-    glBufferData(GL_UNIFORM_BUFFER, length, data_, GL_STATIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, length_, data_, GL_DYNAMIC_DRAW);
 }
 
-void gpu::UniformBuffer::bufferSubData(uint32_t offset, uint32_t length_, void *data_) {
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, length, data_);
+void gpu::UniformBuffer::bufferSubData(uint32_t offset, uint32_t length, void *data) {
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, length, data);
 }
 
 gpu::Shader *gpu::createShader(uint32_t type, const char *src) {

@@ -30,6 +30,7 @@ void Shader_createProgram(ShaderProgram &shaderProgram);
     __SHADER(SCREEN_VERT, __shaders__vert_screen, GL_VERTEX_SHADER)                                \
     __SHADER(OBJECT_VERT, __shaders__vert_object, GL_VERTEX_SHADER)                                \
     __SHADER(ANIM_VERT, __shaders__vert_anim, GL_VERTEX_SHADER)                                    \
+    __SHADER(UI_VERT, __shaders__vert_ui, GL_VERTEX_SHADER)                                        \
     __SHADER(TEXT_VERT, __shaders__vert_text, GL_VERTEX_SHADER)                                    \
     __SHADER(TEXTURE_FRAG, __shaders__frag_texture, GL_FRAGMENT_SHADER)                            \
     __SHADER(OBJECT_FRAG, __shaders__frag_object, GL_FRAGMENT_SHADER)                              \

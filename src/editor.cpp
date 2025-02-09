@@ -3,8 +3,8 @@
 #include "primer.h"
 #include <cstdio>
 
-static std::pair<glm::vec3, glm::vec3> _rightForward(float yaw) {
-    glm::vec3 v{glm::cos(yaw), 0.0f, glm::sin(yaw)};
+static std::pair<glm::vec3, glm::vec3> _rightForward(float yaw_rad) {
+    glm::vec3 v{glm::sin(yaw_rad), 0.0f, glm::cos(yaw_rad)};
     glm::vec3 right = glm::cross(v, primer::UP);
     glm::vec3 forward = glm::cross(primer::UP, right);
     return {right, forward};
@@ -28,8 +28,8 @@ void Editor::_resetHistoric() {
         _translation = historicEvents.back().translation;
         break;
     case HistoricEvent::ROTATE:
-        _selectedNode->rotation = historicEvents.back().rotation;
-        _rotation = historicEvents.back().rotation;
+        _selectedNode->euler = historicEvents.back().euler;
+        _euler = historicEvents.back().euler;
         break;
     case HistoricEvent::SCALE:
         _selectedNode->scale = historicEvents.back().scale;
@@ -56,8 +56,8 @@ bool Editor::undo_redo(std::list<HistoricEvent> &eventsListA,
             node->translation = ev.translation;
             break;
         case HistoricEvent::ROTATE:
-            ev2.rotation = node->rotation.data();
-            node->rotation = ev.rotation;
+            ev2.euler = node->euler.data();
+            node->euler = ev.euler;
             break;
         case HistoricEvent::SCALE:
             ev2.scale = node->scale.data();
@@ -93,7 +93,7 @@ bool Editor::mouseMoved(float /*x*/, float /*y*/, float xrel, float yrel) {
     if (_selectedNode == nullptr) {
         return false;
     }
-    auto [right, forward] = _rightForward(_currentView.yaw);
+    auto [right, forward] = _rightForward(glm::radians(_camera.currentView.yaw));
     switch (_editMode) {
     case EditMode::TRANSLATE:
         if (_editAxis != EditAxis::NONE) {
@@ -111,24 +111,17 @@ bool Editor::mouseMoved(float /*x*/, float /*y*/, float xrel, float yrel) {
     case EditMode::ROTATE:
         switch (_editAxis) {
         case EditAxis::X:
-            _rotation *= glm::angleAxis(
-                glm::radians(glm::dot(primer::AXIS_Z, right * -xrel + forward * yrel)),
-                primer::AXIS_X);
-            break;
-        case EditAxis::Y:
-            _rotation *= glm::angleAxis(glm::radians(xrel), primer::AXIS_Y);
-            break;
-        case EditAxis::Z:
-            _rotation *= glm::angleAxis(
-                glm::radians(glm::dot(-primer::AXIS_X, right * -xrel + forward * yrel)),
-                primer::AXIS_Z);
+            _euler.x += glm::dot(primer::AXIS_Z, right * -xrel + forward * yrel);
             break;
         case EditAxis::NONE:
-            _rotation *= glm::angleAxis(glm::radians(xrel), primer::UP);
-            //_rotation *= glm::angleAxis(glm::radians(yrel), forward);
+        case EditAxis::Y:
+            _euler.y += xrel;
+            break;
+        case EditAxis::Z:
+            _euler.z = glm::dot(-primer::AXIS_X, right * -xrel + forward * yrel);
             break;
         }
-        _selectedNode->rotation = _rotation;
+        _selectedNode->euler = applyStep(_euler, _rstep);
         break;
         return false;
     case EditMode::SCALE:
@@ -155,32 +148,26 @@ bool Editor::mouseMoved(float /*x*/, float /*y*/, float xrel, float yrel) {
 bool Editor::mouseScrolled(float x, float y) {
     SDL_Keymod mod = SDL_GetModState();
 
-    static const float _urad = glm::radians(1.0f);
-    x *= _urad;
-    y *= -_urad;
-
     _dirtyView = true;
-
     if (mod & KMOD_SHIFT) {
-        auto [right, forward] = _rightForward(_currentView.yaw);
-        _targetView.center += (right * -x + forward * y) * 10.0f;
-        _targetView.center.x = glm::round(_targetView.center.x * 10.0f) * 0.1f;
-        _targetView.center.z = glm::round(_targetView.center.z * 10.0f) * 0.1f;
+        auto [right, forward] = _rightForward(glm::radians(_camera.currentView.yaw));
+        _camera.targetView.center += (right * -x + forward * -y);
+        _camera.targetView.center.x = glm::round(_camera.targetView.center.x * 10.0f) * 0.1f;
+        _camera.targetView.center.z = glm::round(_camera.targetView.center.z * 10.0f) * 0.1f;
     } else if (mod & KMOD_LGUI) {
-        _targetView.center.y += y * 5.0f;
-        _targetView.center.y = glm::round(_targetView.center.y * 10.0f) * 0.1f;
+        _camera.targetView.center.y -= y;
+        _camera.targetView.center.y = glm::round(_camera.targetView.center.y * 10.0f) * 0.1f;
     } else {
-        _targetView.yaw -= x * 5.0f;
-        _targetView.pitch -= y * 5.0f;
+        _camera.targetView.yaw += x * 10.0f;
+        _camera.targetView.pitch -= y * 10.0f;
     }
-
     return true;
 }
 
 gpu::Node *Editor::addNode(gpu::Node *node) {
-    node->translation = _selectedNode ? _selectedNode->translation.data() : _targetView.center;
-    node->rotation = _selectedNode ? _selectedNode->rotation.data()
-                                   : glm::angleAxis(_currentView.yaw, primer::UP);
+    node->translation =
+        _selectedNode ? _selectedNode->translation.data() : _camera.targetView.center;
+    node->euler = _selectedNode ? _selectedNode->euler.data() : glm::vec3{0.0f, 0.0f, 0.0f};
     node->scale = _selectedNode ? _selectedNode->scale.data() : glm::vec3{1.0f, 1.0f, 1.0f};
     auto &ev = emplaceHistoricEvent(HistoricEvent::ADD);
     ev.nodes.emplace_back(node);
@@ -222,21 +209,21 @@ bool Editor::keyDown(int key, int mods) {
         // fall-through
     case SDLK_SPACE:
         if (_selectedNode) {
-            _targetView.center = _selectedNode->translation.data();
+            _camera.targetView.center = _selectedNode->translation.data();
         }
         return true;
     case SDLK_MINUS:
-        if (_targetView.distance <= 1.0f) {
-            _targetView.distance /= 0.9f;
+        if (_camera.targetView.distance <= 1.0f) {
+            _camera.targetView.distance /= 0.9f;
         } else {
-            _targetView.distance = glm::round(_targetView.distance + 1.0f);
+            _camera.targetView.distance = glm::round(_camera.targetView.distance + 1.0f);
         }
         return true;
     case SDLK_PLUS:
-        if (_targetView.distance <= 1.0f) {
-            _targetView.distance *= 0.9f;
+        if (_camera.targetView.distance <= 1.0f) {
+            _camera.targetView.distance *= 0.9f;
         } else {
-            _targetView.distance = glm::round(_targetView.distance - 1.0f);
+            _camera.targetView.distance = glm::round(_camera.targetView.distance - 1.0f);
         }
         return true;
     case SDLK_g:
@@ -248,10 +235,10 @@ bool Editor::keyDown(int key, int mods) {
             undo_redo(futureEvents, historicEvents);
         } else if (_selectedNode) {
             _editMode = EditMode::ROTATE;
-            _rotation = _selectedNode->rotation.data();
+            _euler = _selectedNode->euler.data();
             auto &ev = emplaceHistoricEvent(HistoricEvent::ROTATE);
             ev.nodes.emplace_back(_selectedNode);
-            ev.rotation = _selectedNode->rotation.data();
+            ev.euler = _selectedNode->euler.data();
         }
         return true;
     case SDLK_s:
@@ -325,7 +312,7 @@ bool Editor::keyDown(int key, int mods) {
         } else if (_editMode == EditMode::ROTATE) {
             _editMode = EditMode::NONE;
             _editAxis = EditAxis::NONE;
-            _selectedNode->rotation = historicEvents.back().rotation;
+            _selectedNode->euler = historicEvents.back().euler;
             historicEvents.pop_back();
             _iEditor->nodeTransformed(_selectedNode);
         } else if (_editMode == EditMode::SCALE) {
@@ -350,26 +337,6 @@ bool Editor::keyDown(int key, int mods) {
 
 bool Editor::keyUp(int /*key*/, int /*mods*/) { return false; }
 
-void Editor::update(float dt) {
-    _currentView.yaw = glm::mix(_currentView.yaw, _targetView.yaw, 4.0f * dt);
-    _currentView.pitch = glm::mix(_currentView.pitch, _targetView.pitch, 4.0f * dt);
-    _currentView.center = glm::mix(_currentView.center, _targetView.center, 4.0f * dt);
-    _currentView.distance = glm::mix(_currentView.distance, _targetView.distance, 4.0f * dt);
-    _dirtyView = true;
-}
-
-const glm::mat4 &Editor::view() {
-    if (_dirtyView) {
-        glm::vec3 orientation{glm::cos(_currentView.yaw) * glm::cos(_currentView.pitch),
-                              glm::sin(_currentView.pitch),
-                              glm::sin(_currentView.yaw) * glm::cos(_currentView.pitch)};
-        _view = glm::lookAt(_currentView.center + orientation * _currentView.distance,
-                            _currentView.center, primer::UP);
-        _dirtyView = false;
-    }
-    return _view;
-}
-
 bool Editor::translateSelected(const glm::vec3 &translation) {
     if (_selectedNode) {
         auto &ev = emplaceHistoricEvent(HistoricEvent::TRANSLATE);
@@ -382,12 +349,12 @@ bool Editor::translateSelected(const glm::vec3 &translation) {
     return false;
 }
 
-bool Editor::rotateSelected(const glm::quat &rotation) {
+bool Editor::rotateSelected(const glm::vec3 &euler) {
     if (_selectedNode) {
         auto &ev = emplaceHistoricEvent(HistoricEvent::ROTATE);
         ev.nodes.emplace_back(_selectedNode);
-        ev.rotation = _selectedNode->rotation.data();
-        _selectedNode->rotation = rotation;
+        ev.euler = _selectedNode->euler.data();
+        _selectedNode->euler = euler;
         _iEditor->nodeTransformed(_selectedNode);
         return true;
     }
@@ -413,20 +380,13 @@ void Editor::clearHistory() {
     futureEvents.clear();
 }
 
-void Editor::enable() {
-    _enabled = true;
-    window::enableMouseListener(this);
-    window::enableMouseMotionListener(this);
-    window::enableMouseWheelListener(this);
-    window::enableKeyListener(this);
-}
-void Editor::disable() {
-    _enabled = false;
-    window::disableMouseListener(this);
-    window::disableMouseMotionListener(this);
-    window::disableMouseWheelListener(this);
-    window::disableKeyListener(this);
+void Editor::disable(bool disabled) {
+    _disabled = disabled;
+    window::disableMouseListener(this, disabled);
+    window::disableMouseMotionListener(this, disabled);
+    window::disableMouseWheelListener(this, disabled);
+    window::disableKeyListener(this, disabled);
 }
 
-void Editor::setCurrentView(const CameraView &cameraView) { _currentView = cameraView; }
-void Editor::setTargetView(const CameraView &cameraView) { _targetView = cameraView; }
+// void Editor::setCurrentView(const CameraView &cameraView) { _currentView = cameraView; }
+// void Editor::setTargetView(const CameraView &cameraView) { _targetView = cameraView; }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cameraview.h"
+#include "camera.h"
 #include "ecs.h"
 #include "gpu.h"
 #include <cstddef>
@@ -14,9 +14,9 @@ namespace persist {
 struct IPersist {
     virtual bool saveNodeInfo(gpu::Node *node, uint32_t &info) = 0;
     virtual bool saveNodeExtra(gpu::Node *node, uint32_t &extra) = 0;
-    virtual gpu::Scene *loadedScene(const char *name) = 0;
-    virtual bool loadedEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info,
-                              uint32_t extra) = 0;
+    virtual gpu::Scene *loadScene(const char *name) = 0;
+    virtual bool loadEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info,
+                            uint32_t extra) = 0;
 };
 
 void registerIPersist(IPersist *iPersist);
@@ -25,14 +25,14 @@ struct Entity {
     uint16_t sceneId;
     uint16_t nodeId;
     glm::vec3 translation;
-    glm::quat rotation;
+    glm::vec3 rotation;
     glm::vec3 scale;
     uint32_t info;
     uint32_t extra;
 };
 static_assert(sizeof(Entity) == sizeof(Entity::sceneId) + sizeof(Entity::nodeId) +
                                     sizeof(Entity::info) + sizeof(Entity::extra) +
-                                    sizeof(glm::vec3) * 2 + sizeof(glm::quat));
+                                    sizeof(glm::vec3) * 3);
 struct Node {
     char name[24];
     uint32_t info;

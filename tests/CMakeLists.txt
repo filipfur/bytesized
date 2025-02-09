@@ -8,6 +8,7 @@ add_executable(test_bytesized
     test_ecs.cpp
     test_persist.cpp
     test_embed.cpp
+    test_geom_primitives.cpp
 )
 
 target_link_libraries(test_bytesized

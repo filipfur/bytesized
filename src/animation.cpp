@@ -3,16 +3,19 @@
 #include "logging.h"
 #include "recycler.hpp"
 
-#define ANIMATION__COUNT 10
-#define ANIMATION__PLAYER_COUNT 10
+#define ANIMATION__COUNT 50
+#define ANIMATION__PLAYBACK_COUNT 10
 static recycler<animation::Animation, ANIMATION__COUNT> ANIMATIONS = {};
-static recycler<animation::Player, ANIMATION__PLAYER_COUNT> PLAYERS = {};
+static recycler<animation::Playback, ANIMATION__PLAYBACK_COUNT> PLAYBACKS = {};
 bool animation::SETTINGS_LERP{true};
 
-animation::Animation *animation::createAnimation(const library::Animation &anim) {
+animation::Animation *animation::createAnimation(const library::Animation &anim,
+                                                 gpu::Node *retargetNode) {
     auto rval = ANIMATIONS.acquire();
+    rval->libraryAnimation = &anim;
     rval->startTime = FLT_MAX;
     rval->endTime = -FLT_MAX;
+    rval->looping = true;
     for (size_t j{0}; j < 96; ++j) {
         const auto &channel = anim.channels[j];
         if (channel.type) {
@@ -20,6 +23,10 @@ animation::Animation *animation::createAnimation(const library::Animation &anim)
             glm::vec3 *v3p = (glm::vec3 *)channel.sampler->output->data();
             glm::vec4 *v4p = (glm::vec4 *)channel.sampler->output->data();
             gpu::Node *targetNode = (gpu::Node *)channel.targetNode->gpuInstance;
+            if (retargetNode) {
+                targetNode = retargetNode->childByName(channel.targetNode->name.c_str());
+                assert(targetNode);
+            }
             rval->name = anim.name;
             switch (channel.type) {
             case library::Channel::TRANSLATION:
@@ -95,57 +102,57 @@ animation::Animation *animation::createAnimation(const library::Animation &anim)
 void animation::freeAnimation(Animation *animation) { ANIMATIONS.free(animation); }
 
 void animation::Animation::start() {
-    for (size_t i{0}; i < PLAYERS.count(); ++i) {
-        if (PLAYERS[i].animation == this) {
+    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
+        if (PLAYBACKS[i].animation == this) {
             return;
         }
     }
-    auto player = PLAYERS.acquire();
-    player->animation = this;
-    player->paused = false;
-    player->time = 0.0f;
+    auto playback = PLAYBACKS.acquire();
+    playback->animation = this;
+    playback->paused = false;
+    playback->time = 0.0f;
 }
 
 void animation::Animation::stop() {
-    animation::Player *player{nullptr};
-    for (size_t i{0}; i < PLAYERS.count(); ++i) {
-        if (PLAYERS[i].animation == this) {
-            player = PLAYERS.data() + 1;
+    animation::Playback *playback{nullptr};
+    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
+        if (PLAYBACKS[i].animation == this) {
+            playback = PLAYBACKS.data() + 1;
             break;
         }
     }
-    if (player) {
-        player->animation = nullptr;
-        PLAYERS.free(player);
+    if (playback) {
+        playback->animation = nullptr;
+        PLAYBACKS.free(playback);
     }
 }
 
-animation::Player *animation::createPlayer(animation::Animation *animation) {
-    animation::Player *handle = PLAYERS.acquire();
+animation::Playback *animation::createPlayback(animation::Animation *animation) {
+    animation::Playback *handle = PLAYBACKS.acquire();
     handle->animation = animation;
     return handle;
 };
 
-void animation::freePlayer(animation::Player *player) {
-    player->animation = nullptr;
-    player->paused = false;
-    player->time = 0.0f;
-    PLAYERS.free(player);
+void animation::freePlayback(animation::Playback *playback) {
+    playback->animation = nullptr;
+    playback->paused = false;
+    playback->time = 0.0f;
+    PLAYBACKS.free(playback);
 };
 
 static inline animation::Frame *getFrame(animation::Channel &channel, float time);
 
 void animation::animate(float dt) {
-    for (size_t i{0}; i < PLAYERS.count(); ++i) {
-        auto &animation = PLAYERS[i];
-        if (auto anim = animation.animation) {
-            if (animation.paused) {
+    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
+        auto &playback = PLAYBACKS[i];
+        if (auto anim = playback.animation) {
+            if (playback.paused) {
                 continue;
             }
             for (auto &channel : anim->channels) {
                 gpu::Node *node = channel.first;
                 if (auto tframe = getFrame(channel.second.at(animation::Animation::CH_TRANSLATION),
-                                           animation.time)) {
+                                           playback.time)) {
                     if (SETTINGS_LERP) {
                         node->translation =
                             glm::mix(node->translation.data(), tframe->v3, 16.0f * dt);
@@ -154,7 +161,7 @@ void animation::animate(float dt) {
                     }
                 }
                 if (auto rframe = getFrame(channel.second.at(animation::Animation::CH_ROTATION),
-                                           animation.time)) {
+                                           playback.time)) {
                     if (SETTINGS_LERP) {
                         node->rotation = glm::slerp(node->rotation.data(), rframe->q, 16.0f * dt);
                     } else {
@@ -162,7 +169,7 @@ void animation::animate(float dt) {
                     }
                 }
                 if (auto sframe = getFrame(channel.second.at(animation::Animation::CH_SCALE),
-                                           animation.time)) {
+                                           playback.time)) {
                     if (SETTINGS_LERP) {
                         node->scale = glm::mix(node->scale.data(), sframe->v3, 16.0f * dt);
                     } else {
@@ -171,9 +178,14 @@ void animation::animate(float dt) {
                 }
             }
         }
-        animation.time += dt;
-        if (animation.time > animation.animation->endTime) {
-            animation.time -= animation.animation->endTime;
+        playback.time += dt;
+        if (playback.time > playback.animation->endTime) {
+            if (playback.animation->looping) {
+                playback.time =
+                    playback.animation->startTime + (playback.time - playback.animation->endTime);
+            } else {
+                playback.time = std::min(playback.time, playback.animation->endTime);
+            }
         }
     }
 }

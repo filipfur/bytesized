@@ -1,5 +1,6 @@
 #pragma once
 
+#include "frame.h"
 #include "gpu.h"
 #include <glm/glm.hpp>
 
@@ -19,9 +20,9 @@ struct GUI {
     gpu::Text *setTitleText(const char *value);
     gpu::Text *setConsoleText(const char *value);
     gpu::Text *setFps(float fps);
-    void setNodeInfo(const char *scene, const char *name, const char *mesh,
+    void setNodeInfo(const char *scene, const char *name, uint32_t id, const char *mesh,
                      const char *componentInfo, const glm::vec3 &translation,
-                     const glm::quat &rotation, const glm::vec3 &scale);
+                     const glm::vec3 &euler, const glm::vec3 &scale);
     void showNodeInfo(bool visible);
 
     bdf::Font *font{nullptr};
@@ -32,13 +33,11 @@ struct GUI {
     glm::mat4 view;
 
     gpu::Text *titleText{nullptr};
-    gpu::Text *consoleText{nullptr};
-    gpu::Text *fpsText{nullptr};
-    gpu::Node *fpsFrame{nullptr};
 
     enum NodeInfoDetail {
         NODE_INFO_TITLE,
         NODE_INFO_COMPONENTS,
+        NODE_INFO_MESH,
         NODE_INFO_TRANSLATION,
         NODE_INFO_ROTATION,
         NODE_INFO_SCALE,
@@ -46,6 +45,6 @@ struct GUI {
     };
     gpu::Text *nodeInfoRows[NODE_INFO_COUNT];
 
-    gpu::Node *consoleFrame{nullptr};
-    gpu::Node *nodeInfoFrame{nullptr};
+    enum Frames { FRAME_FPS, FRAME_CONSOLE, FRAME_NODE_INFO, FRAME_COUNT };
+    Frame frames[FRAME_COUNT];
 };

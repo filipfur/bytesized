@@ -1,22 +1,27 @@
 #include "engine.h"
 #include "animation.h"
 #include "assets.h"
+#include "character.h"
 #include "component.h"
 #include "dexterity.h"
 #include "ecs.h"
 #include "embed.h"
 #include "geom_primitive.h"
 #include "gpu.h"
+#include "gpu_primitive.h"
 #include "gui.h"
 #include "persist.h"
-#include "physics.h"
+#include "platformer.h"
 #include "primer.h"
-#include "primitive.h"
+#include "skydome.h"
 #include <algorithm>
 #include <list>
 
 assets::Collection *Engine::addCollection(const library::Collection &collection) {
     return &_collections.emplace_back(collection);
+}
+assets::Collection *Engine::loadGLB(const uint8_t *data) {
+    return addCollection(*library::loadGLB(data, true));
 }
 
 static gpu::Framebuffer *fbo{nullptr};
@@ -26,28 +31,11 @@ static Panel *_activePanel = nullptr;
 constexpr gpu::Plane<1, 1> grid(64.0f);
 static bool _playing = false;
 
-struct Player {
-    gpu::Node *node;
-    Actor *actor;
-    Controller *ctrl;
-};
-static Player _player;
-
 static Vector axisVectors[] = {
     {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, rgb(255, 0, 0)},
     {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, rgb(0, 255, 0)},
     {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, rgb(0, 0, 255)},
 };
-
-// Slow, should probably store entity in gpu::Node struct in the future
-/*static ecs::Entity *_findEntityByNode(gpu::Node *node) {
-    ecs::Entity *entity =
-        ecs::System<CActor>::find([node](Actor &actor) { return actor.trs == node; });
-    if (entity == nullptr) {
-        entity = ecs::System<CPawn>::find([node](Pawn &pawn) { return pawn.trs == node; });
-    }
-    return entity;
-}*/
 
 static geom::Geometry::Type _parseGeometryType(const char *par) {
     if (starts_with(par, "plane")) {
@@ -62,22 +50,42 @@ static geom::Geometry::Type _parseGeometryType(const char *par) {
     return geom::Geometry::Type::AABB;
 }
 
-static void _attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dynamic) {
-    ecs::Entity *entity = (ecs::Entity *)node->extra;
+void Engine::attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dynamic) {
+    ecs::Entity *entity = node->entity;
     if (entity == nullptr) {
         entity = ecs::create_entity();
-        node->extra = entity;
+        node->entity = entity;
     }
     if (dynamic) {
-        ecs::attach<CActor, CCollider>(entity);
-        CActor::get(entity).trs = node;
+        ecs::attach<CActor, CCollider, CGravity>(entity);
+        auto &actor = CActor::get(entity);
+        actor.trs = node;
+        actor.mass = 1.0f;
+        actor.restitution = 0.5f;
+        CGravity::get(entity).factor = 1.0f;
     } else {
         ecs::attach<CPawn, CCollider>(entity);
         CPawn::get(entity).trs = node;
     }
-    if (node->mesh) {
-        auto [positions, length] = node->mesh->libraryMesh->primitives.front().positions();
+    if (auto n = node->find([](gpu::Node *n) { return n->mesh; })) {
+        for (gpu::Node *child : n->children) {
+            if (child->libraryNode->name.compare(0, 3, "C__") == 0) {
+                n = child;
+                break;
+            }
+        }
+        auto [positions, length] = n->mesh->libraryMesh->primitives.front().positions();
         auto &colider = CCollider::get(entity);
+        if (n->libraryNode->name.compare("C__Sphere") == 0) {
+            type = geom::Geometry::Type::SPHERE;
+            n->hidden = true;
+        }
+        if (n->libraryNode->name.compare("C__Box") == 0) {
+            type = (glm::dot(node->euler.data(), node->euler.data()) > primer::EPSILON)
+                       ? geom::Geometry::Type::OBB
+                       : geom::Geometry::Type::AABB;
+            n->hidden = true;
+        }
         switch (type) {
         case geom::Geometry::Type::PLANE: {
             auto *plane = geom::createPlane();
@@ -91,49 +99,43 @@ static void _attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dyn
             sphere->construct(positions, length, dynamic ? nullptr : node);
             colider.geometry = sphere;
             colider.transforming = dynamic;
+            if (auto actor = CActor::get_pointer(entity)) {
+                float r = (sphere->_radii * node->s().x);
+                actor->mass = r * r * r * 1000.0f;
+            }
         } break;
         case geom::Geometry::Type::AABB: {
             auto *aabb = geom::createAABB();
             aabb->construct(positions, length, dynamic ? nullptr : node);
             colider.geometry = aabb;
             colider.transforming = dynamic;
-            /*gpu::Node *node = gpu::createNode(
-                gpu::createMesh(gpu::builtinPrimitives(gpu::CUBE),
-                                gpu::builtinMaterial(gpu::BuiltinMaterial::WHITE)));
-            glm::vec3 e = (aabb->max - aabb->min) * 0.5f;
-            node->scale = e;
-            sel->addChild(node);*/
-            // engine->vectors.emplace_back(aabb->min);
-            // engine->vectors.emplace_back(aabb->max);
         } break;
         case geom::Geometry::Type::OBB: {
             auto *obb = geom::createOBB();
-            obb->construct(positions, length, dynamic ? nullptr : node);
+            obb->construct(positions, length, nullptr); // dynamic ? nullptr : node);
             colider.geometry = obb;
-            colider.transforming = dynamic;
+            colider.transforming = true;
         } break;
         default:
         }
     }
 }
 
-static void _attachController(gpu::Node *node, geom::Geometry::Type type) {
-    _attachCollider(node, type, true);
-    ecs::Entity *entity = (ecs::Entity *)node->extra;
-    CController::attach(entity);
-    auto &collider = CCollider::get(entity);
-    auto &ctrl = CController::get(entity);
-    _player.node = node;
-    _player.actor = CActor::get_pointer(entity);
-    _player.ctrl = &ctrl;
+void Engine::attachController(gpu::Node *node, geom::Geometry::Type type) {
+    attachCollider(node, type, true);
+    CController::attach(node->entity);
+    auto &actor = CActor::get(node->entity);
+    actor.restitution = 0.5f;
+    auto &collider = CCollider::get(node->entity);
+    auto &ctrl = CController::get(node->entity);
     geom::Sphere *s1 = dynamic_cast<geom::Sphere *>(collider.geometry);
     geom::Sphere *s2 = geom::createSphere();
-    ctrl.floorSense = &s2->construct(s2->_center, s1->_radii + 0.1f);
-    ctrl.walkControl = {0.0f, 0.0f, 0.0f};
-    ctrl.walkSpeed = 10.0f;
-    ctrl.jumpControl = 0;
-    ctrl.jumpSpeed = 10.0f;
-    ctrl.onGround = false;
+    ctrl.floorSense = &s2->construct(s1->_center, s1->_radii + 0.02f);
+    ctrl.movement = 0x0;
+    ctrl.state = Controller::STATE_FALLING;
+    ctrl.walkSpeed = 6.0f;
+    ctrl.jumpTimer = 0;
+    ctrl.jumpCount = 2;
 }
 
 void Engine::init(int drawableWidth, int drawableHeight) {
@@ -153,6 +155,8 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     // create all gpu objects
     gpu::allocate();
 
+    gpu::createBuiltinUBOs();
+
     auto builtinGeoms = _collections.emplace_back(*gpu::createBuiltinPrimitives());
 
     bdf::Font *font = bdf::createFont(__bdf__boxxy, __bdf__boxxy_len);
@@ -160,52 +164,56 @@ void Engine::init(int drawableWidth, int drawableHeight) {
 
     const glm::vec4 defaultColor = Color::green.vec4();
 
-    shaderProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::OBJECT_VERT),
-                                             gpu::builtinShader(gpu::OBJECT_FRAG),
-                                             {{"u_projection", perspectiveProjection},
-                                              {"u_color", defaultColor},
-                                              {"u_diffuse", 0},
-                                              {"u_view", glm::mat4{1.0f}},
-                                              {"u_model", glm::mat4{1.0f}}});
+    shaderProgram = gpu::createShaderProgram(
+        gpu::builtinShader(gpu::OBJECT_VERT), gpu::builtinShader(gpu::OBJECT_FRAG),
+        {{"u_color", defaultColor}, {"u_diffuse", 0}, {"u_model", glm::mat4{1.0f}}});
 
     animProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::ANIM_VERT),
-                                           gpu::builtinShader(gpu::ANIM_FRAG),
-                                           {{"u_projection", perspectiveProjection},
+                                           gpu::builtinShader(gpu::OBJECT_FRAG),
+                                           {//{"u_projection", perspectiveProjection},
+                                            //{"u_view", glm::mat4{1.0f}},
                                             {"u_color", defaultColor},
                                             {"u_diffuse", 0},
-                                            {"u_view", glm::mat4{1.0f}},
                                             {"u_model", glm::mat4{1.0f}}});
+    gpu::builtinUBO(gpu::UBO_SKINNING)->bindShaders({animProgram});
 
     const Color bgColor(0xe0f8d0);
     const Color textColor(0x081820);
     textProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::TEXT_VERT),
                                            gpu::builtinShader(gpu::TEXT_FRAG),
-                                           {{"u_projection", perspectiveProjection},
-                                            {"u_bg_color", bgColor.vec4()},
+                                           {{"u_bg_color", bgColor.vec4()},
                                             {"u_text_color", textColor.vec4()},
                                             {"u_diffuse", 0},
-                                            {"u_view", glm::mat4{1.0f}},
                                             {"u_model", glm::mat4{1.0f}},
                                             {"u_metallic", 1.0f},
                                             {"u_time", 0.0f}});
+    gpu::builtinUBO(gpu::UBO_CAMERA)->bindShaders({shaderProgram, animProgram, textProgram});
+    gpu::builtinUBO(gpu::UBO_LIGHT)->bindShaders({shaderProgram, animProgram, textProgram});
 
-    uiProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::OBJECT_VERT),
+    // glm::mat4 guiBlock[] = {gui.projection, gui.view};
+    //  gpu::UniformBuffer *guiUBO = gpu::builtinUBO(gpu::BuiltinUBO::UBO_GUI);
+    //  guiUBO->bufferData(sizeof(glm::mat4) * 2, guiBlock);
+    uiProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::UI_VERT),
                                          gpu::builtinShader(gpu::TEXTURE_FRAG),
                                          {{"u_projection", gui.projection},
-                                          {"u_diffuse", 0},
                                           {"u_view", gui.view},
+                                          {"u_diffuse", 0},
                                           {"u_model", glm::mat4{1.0f}}});
+    // guiUBO->emplace(uiProgram);
 
-    uiTextProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::TEXT_VERT),
+    uiTextProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::UI_VERT),
                                              gpu::builtinShader(gpu::TEXT_FRAG),
                                              {{"u_projection", gui.projection},
+                                              {"u_view", gui.view},
                                               {"u_bg_color", bgColor.vec4()},
                                               {"u_text_color", textColor.vec4()},
                                               {"u_diffuse", 0},
-                                              {"u_view", gui.view},
                                               {"u_model", glm::mat4{1.0f}},
                                               {"u_metallic", 0.0f},
                                               {"u_time", 0.0f}});
+    // guiUBO->emplace(uiTextProgram);
+    skydome::create();
+
     screenProgram =
         gpu::createShaderProgram(gpu::builtinShader(gpu::SCREEN_VERT),
                                  gpu::builtinShader(gpu::TEXTURE_FRAG), {{"u_texture", 0}});
@@ -217,15 +225,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     fbo->checkStatus();
     fbo->unbind();
     _clickNPick.create(_windowWidth, _windowHeight, gpu::builtinShader(gpu::OBJECT_VERT),
-                       perspectiveProjection, 0.1f);
-
-    _app->init(drawableWidth, drawableHeight);
-    if (persist::loadSession(sessionData)) {
-        if (strlen(sessionData.recentFile) > 0) {
-            openSaveFile(sessionData.recentFile);
-        }
-        _editor.setTargetView(sessionData.cameraView);
-    }
+                       gpu::builtinShader(gpu::ANIM_VERT), perspectiveProjection, 0.1f);
 
     gridNode = gpu::createNode();
     gridNode->hidden = true;
@@ -236,12 +236,15 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     gridNode->translation = {0.0f, 0.01f, 0.0f};
     gridNode->rotation = glm::angleAxis(glm::radians(-90.0f), glm::vec3{1.0f, 0.0f, 0.0f});
     gridNode->scale = glm::vec3{64.0f, 64.0f, 64.0f};
+
+    gpu::CameraBlock_setProjection(perspectiveProjection);
+
     _console.setSetting("wiremode", "0");
     _console.setSetting("tstep", "0");
     _console.setSetting("rstep", "0");
     _console.addCustomCommand(":static ", [this](const char *key) {
         if (auto sel = _editor.selectedNode()) {
-            _attachCollider(sel, _parseGeometryType(key + strlen(":static ")), false);
+            attachCollider(sel, _parseGeometryType(key + strlen(":static ")), false);
             nodeSelected(sel);
             return true;
         }
@@ -249,7 +252,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     });
     _console.addCustomCommand(":dynamic ", [this](const char *key) {
         if (auto sel = _editor.selectedNode()) {
-            _attachCollider(sel, _parseGeometryType(key + strlen(":dynamic ")), true);
+            attachCollider(sel, _parseGeometryType(key + strlen(":dynamic ")), true);
             nodeSelected(sel);
             return true;
         }
@@ -257,16 +260,8 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     });
     _console.addCustomCommand(":spyro", [this](const char *key) {
         if (auto sel = _editor.selectedNode()) {
-            _attachController(sel, geom::Geometry::Type::SPHERE);
+            attachController(sel, geom::Geometry::Type::SPHERE);
             nodeSelected(sel);
-            return true;
-        }
-        return false;
-    });
-    _console.addCustomCommand(":play", [this](const char * /*key*/) {
-        if (!_playing) {
-            _playing = true;
-            _editor.disable();
             return true;
         }
         return false;
@@ -274,32 +269,68 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     _console.addCustomCommand(":stop", [this](const char * /*key*/) {
         if (_playing) {
             _playing = false;
-            _editor.enable();
+            _editor.disable(false);
+            SDL_SetRelativeMouseMode(SDL_FALSE);
             return true;
+        }
+        return false;
+    });
+    _console.addCustomCommand(":viz", [this](const char * /*key*/) {
+        if (auto sel = _editor.selectedNode()) {
+            auto n = sel->find([](gpu::Node *node) { return node->entity; });
+            if (auto entity = n->entity) {
+                if (auto collider = CCollider::get_pointer(entity)) {
+                    vectors.clear();
+                    collider->geometry->trs = collider->transforming ? sel : nullptr;
+                    switch (collider->geometry->type()) {
+                    case geom::Geometry::Type::PLANE: {
+                        auto plane = (geom::Plane *)collider->geometry;
+                        vectors.emplace_back(plane->origin(), plane->normal, Color::yellow);
+                    }
+                        return true;
+                    case geom::Geometry::Type::SPHERE: {
+                        auto sphere = (geom::Sphere *)collider->geometry;
+                        glm::vec3 r = glm::normalize(glm::vec3{1.0f, 1.0f, 1.0f}) * sphere->radii();
+                        vectors.emplace_back(sphere->origin(), r, Color::yellow);
+                        vectors.emplace_back(sphere->origin(), -r, Color::red);
+                    }
+                        return true;
+                    case geom::Geometry::Type::AABB: {
+                        auto aabb = (geom::AABB *)collider->geometry;
+                        vectors.emplace_back(aabb->origin(), aabb->extents(), Color::yellow);
+                        vectors.emplace_back(aabb->origin(), -aabb->extents(), Color::red);
+                    }
+                        return true;
+                    case geom::Geometry::Type::OBB: {
+                    } break;
+                    }
+                }
+            }
         }
         return false;
     });
 }
 
 bool Engine::update(float dt) {
-    _editor.update(dt);
-    _editor.setTStep(_console.settingFloat("tstep"));
-    _editor.setRStep(_console.settingFloat("rstep"));
-    if (auto sel = _editor.selectedNode()) {
-        for (auto &vec : axisVectors) {
-            vec.O = sel->translation.data();
-            vec.hidden = false;
-        }
+    if (_iGame) {
+        _iGame->update(dt);
     } else {
-        for (auto &vec : axisVectors) {
-            vec.hidden = true;
+        _editor.setTStep(_console.settingFloat("tstep"));
+        _editor.setRStep(_console.settingFloat("rstep"));
+        for (size_t i{0}; i < 3; ++i) {
+            auto &vec = axisVectors[i];
+            if (auto node = _editor.selectedNode()) {
+                vec.O = node->translation.data();
+                vec.Ray = node->r() * primer::AXES[i];
+                vec.hidden = false;
+            } else {
+                vec.hidden = true;
+            }
         }
     }
-    if (_playing) {
-        physics_step(dt);
-    }
+    _camera.update(dt);
     animation::animate(dt);
-    return _app->update(dt);
+    return true;
 }
 
 void Engine::resize(int drawableWidth, int drawableHeight) {
@@ -307,109 +338,155 @@ void Engine::resize(int drawableWidth, int drawableHeight) {
     _drawableHeight = drawableHeight;
 }
 
+void Engine::startGame(IGame *iGame) {
+    _iGame = iGame;
+    _iGame->init();
+    _editor.selectNode(nullptr);
+    _editor.disable(true);
+}
+
+void Engine::endGame() {
+    _iGame = nullptr;
+    _editor.disable(false);
+}
+
 static void _renderNodes(Editor &editor, Console &console, gpu::ShaderProgram *shaderProgram,
-                         std::vector<gpu::Node *> &nodes, std::list<Vector> &vectors) {
+                         std::vector<gpu::Node *> &nodes, bool skinned) {
     for (auto *node : nodes) {
+        if ((node->skin == nullptr) == skinned) {
+            continue;
+        }
         if (node == editor.selectedNode()) {
             glStencilFunc(GL_ALWAYS, 1, 0xFF);
             glStencilMask(0xFF);
             node->render(shaderProgram);
             glStencilMask(0x00);
         }
+        if (auto entity = node->entity) {
+            if (Controller *ctrl = CController::get_pointer(entity)) {
+                static gpu::Material *ctrlMat =
+                    gpu::createMaterial(gpu::builtinMaterial(gpu::WHITE)->textures.at(GL_TEXTURE0));
+                auto meshNode = node->find([](gpu::Node *node) { return node->mesh; });
+                meshNode->mesh->primitives.front().second = ctrlMat;
+                meshNode->material()->color =
+                    (ctrl && ctrl->state == Controller::STATE_ON_GROUND) ? Color::blue : Color::red;
+            }
+        }
         node->render(shaderProgram);
     }
     if (auto sel = editor.selectedNode()) {
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glDisable(GL_DEPTH_TEST);
-        // glDisable(GL_CULL_FACE);
-        auto mat = gpu::builtinMaterial(gpu::BuiltinMaterial::WHITE);
-        mat->color = Color(0x44AAFF) * Color::opacity(0.4f);
-        gpu::setOverrideMaterial(mat);
-        sel->render(shaderProgram);
-        mat->color = Color(0x44FFAA) * Color::opacity(0.7f);
-        sel->recursive([](gpu::Node *node) { node->wireframe = true; });
-        sel->render(shaderProgram);
-        sel->recursive([](gpu::Node *node) { node->wireframe = false; });
-        gpu::setOverrideMaterial(nullptr);
-        // glEnable(GL_CULL_FACE);
-        glEnable(GL_DEPTH_TEST);
+        if ((sel->skin == nullptr) != skinned) {
+            glStencilFunc(GL_ALWAYS, 1, 0xFF);
+            glDisable(GL_DEPTH_TEST);
+            // glDisable(GL_CULL_FACE);
+            auto mat = gpu::builtinMaterial(gpu::BuiltinMaterial::WHITE);
+            mat->color = Color(0x44AAFF) * Color::opacity(0.4f);
+            gpu::setOverrideMaterial(mat);
+            sel->render(shaderProgram);
+            mat->color = Color(0x44FFAA) * Color::opacity(0.7f);
+            sel->recursive([](gpu::Node *node) { node->wireframe = true; });
+            sel->render(shaderProgram);
+            sel->recursive([](gpu::Node *node) { node->wireframe = false; });
+            gpu::setOverrideMaterial(nullptr);
+            // glEnable(GL_CULL_FACE);
+            glEnable(GL_DEPTH_TEST);
+        }
     }
-    glDisable(GL_DEPTH_TEST);
-    for (auto &vector : axisVectors) {
-        gpu::renderVector(shaderProgram, vector);
-    }
-    for (auto &vector : vectors) {
-        gpu::renderVector(shaderProgram, vector);
-    }
-    glEnable(GL_DEPTH_TEST);
 }
 
 void Engine::draw() {
-    float t = Time::seconds();
-    const glm::mat4 &view = _editor.view();
-    _clickNPick.update(view);
+    const glm::mat4 &view = _camera.view();
 
-    fbo->bind();
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    glStencilMask(0x00);
-    // glViewport(0.0f, 0.0f, window::DRAWABLE_WIDTH * 0.5f, window::DRAWABLE_HEIGHT);
+    gpu::CameraBlock_setViewPos(view, _camera.currentView.center);
 
-    if (_console.settingBool("wiremode")) {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    }
-
-    if (_saveFile) {
-        shaderProgram->use();
-        shaderProgram->uniforms.at("u_view") << view;
-        _renderNodes(_editor, _console, shaderProgram, _saveFile->nodes, vectors);
-
+    if (_iGame) {
+        _iGame->draw();
     } else {
-        // render objects
+        float t = Time::seconds();
+        _clickNPick.update(view);
+
+        fbo->bind();
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glStencilMask(0x00);
+        // glViewport(0.0f, 0.0f, window::DRAWABLE_WIDTH * 0.5f, window::DRAWABLE_HEIGHT);
+
+        if (_console.settingBool("wiremode")) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        }
+
+        if (_panel) {
+            if (_panel->type == Panel::SAVE_FILE) {
+                shaderProgram->use();
+                _renderNodes(_editor, _console, shaderProgram, _saveFile.nodes, false);
+
+                animProgram->use();
+                // animProgram->uniforms.at("u_view") << view;
+                _renderNodes(_editor, _console, animProgram, _saveFile.nodes, true);
+            } else {
+                // render objects
+                shaderProgram->use();
+                _renderNodes(_editor, _console, shaderProgram, nodes, false);
+
+                // render skeletal animations
+                animProgram->use();
+                // animProgram->uniforms.at("u_view") << view;
+                _renderNodes(_editor, _console, animProgram, skinNodes, true);
+
+                // render texts
+                textProgram->use();
+                textProgram->uniforms.at("u_time") << t;
+                for (gpu::Node *node : textNodes) {
+                    node->render(textProgram);
+                }
+            }
+        }
+
+        if (_console.settingBool("wiremode")) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
+
         shaderProgram->use();
-        shaderProgram->uniforms.at("u_view") << view;
-        _renderNodes(_editor, _console, shaderProgram, nodes, vectors);
 
-        // render skeletal animations
-        animProgram->use();
-        animProgram->uniforms.at("u_view") << view;
-        for (gpu::Node *node : skinNodes) {
-            node->render(animProgram);
+        glDepthFunc(GL_LEQUAL);
+        gridNode->render(shaderProgram);
+        skydome::render();
+        glDepthFunc(GL_LESS);
+
+        glDisable(GL_DEPTH_TEST);
+        for (auto &vector : axisVectors) {
+            gpu::renderVector(shaderProgram, vector);
+        }
+        for (size_t i{0}; i < 3; ++i) {
+            auto &vector = axisVectors[i];
+            vector.O = _camera.currentView.center;
+            vector.Ray = primer::AXES[i];
+            vector.hidden = false;
+            gpu::renderVector(shaderProgram, vector);
+        }
+        for (auto &vector : vectors) {
+            gpu::renderVector(shaderProgram, vector);
         }
 
-        // render texts
-        textProgram->use();
-        textProgram->uniforms.at("u_view") << view;
-        textProgram->uniforms.at("u_time") << t;
-        for (gpu::Node *node : textNodes) {
-            node->render(textProgram);
-        }
+        glEnable(GL_DEPTH_TEST);
+
+        gui.render(uiProgram, uiTextProgram);
+
+        fbo->unbind();
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        glActiveTexture(GL_TEXTURE0);
+        fbo->textures.at(GL_COLOR_ATTACHMENT0)->bind();
+
+        screenProgram->use();
+        gpu::renderScreen();
     }
-
-    shaderProgram->use();
-    glDepthFunc(GL_LEQUAL);
-    gridNode->render(shaderProgram);
-    glDepthFunc(GL_LESS);
-
-    if (_console.settingBool("wiremode")) {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    }
-
-    gui.render(uiProgram, uiTextProgram);
-
-    fbo->unbind();
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-    glActiveTexture(GL_TEXTURE0);
-    fbo->textures.at(GL_COLOR_ATTACHMENT0)->bind();
-    //_clickNPick.fbo->textures.at(GL_COLOR_ATTACHMENT0)->bind();
-
-    screenProgram->use();
-    gpu::renderScreen();
 }
 
 bool Engine::keyDown(int key, int /*mods*/) {
     switch (key) {
+    case SDLK_0:
+        return openSaveFile(_saveFile.path);
     case SDLK_1:
     case SDLK_2:
     case SDLK_3:
@@ -419,56 +496,34 @@ bool Engine::keyDown(int key, int /*mods*/) {
     case SDLK_7:
     case SDLK_8:
     case SDLK_9:
-        openPanel(key - SDLK_1);
-        return true;
+        return openPanel(key - SDLK_0);
     case SDLK_b:
         if (_blockMode) {
             _console.setSetting("tstep", "0");
+            _console.setSetting("rstep", "0");
             gridNode->hidden = true;
         } else {
             _console.setSetting("tstep", "1");
+            _console.setSetting("rstep", "15");
             gridNode->hidden = false;
         }
         _blockMode = !_blockMode;
         return true;
+    case SDLK_i:
+        _camera.set({{0.0f, 0.0f, 0.0f}, 0.0f, -30.0f, 10.0f});
+        return true;
+    case SDLK_j:
+        _camera.set({{0.0f, 0.0f, 0.0f}, 90.0f, -30.0f, 10.0f});
+        return true;
     case SDLK_k:
-        _editor.setTargetView(
-            {{0.0f, 0.0f, 0.0f}, glm::radians(90.0f), glm::radians(15.0f), 10.0f});
-        _editor.setCurrentView(_editor.targetView());
+        _camera.set({{0.0f, 0.0f, 0.0f}, 180.0f, -30.0f, 10.0f});
         return true;
     case SDLK_l:
-        animation::SETTINGS_LERP = !animation::SETTINGS_LERP;
+        _camera.set({{0.0f, 0.0f, 0.0f}, -90.0f, -30.0f, 10.0f});
         return true;
-    case SDLK_w:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.z = -1.0f;
-            return true;
-        }
-        break;
-    case SDLK_a:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.x = -1.0f;
-            return true;
-        }
-        break;
-    case SDLK_s:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.z = 1.0f;
-            return true;
-        }
-        break;
-    case SDLK_d:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.x = 1.0f;
-            return true;
-        }
-        break;
-    case SDLK_SPACE:
-        if (_player.ctrl->jumpControl == 0 || _player.ctrl->jumpControl == 2) {
-            ++_player.ctrl->jumpControl;
-            return true;
-        }
-        break;
+    // case SDLK_l:
+    //     animation::SETTINGS_LERP = !animation::SETTINGS_LERP;
+    //     return true;
     case SDLK_ESCAPE:
         quit(false);
         return true;
@@ -478,34 +533,11 @@ bool Engine::keyDown(int key, int /*mods*/) {
 }
 
 bool Engine::keyUp(int key, int /*mods*/) {
-
     switch (key) {
-    case SDLK_w:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.z = 0.0f;
-            return true;
-        }
-        break;
-    case SDLK_a:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.x = 0.0f;
-            return true;
-        }
-        break;
-    case SDLK_s:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.z = 0.0f;
-            return true;
-        }
-        break;
-    case SDLK_d:
-        if (_player.ctrl) {
-            _player.ctrl->walkControl.x = 0.0f;
-            return true;
-        }
-        break;
+    default:
+        return false;
     }
-    return false;
+    return true;
 }
 
 void Engine::inputChanged(bool visible, const char * /*value*/) {
@@ -523,7 +555,7 @@ void Engine::listNodes() {
 }
 
 bool Engine::spawnNode(const char *name) {
-    if (_saveFile == nullptr) {
+    if (_panel->type != Panel::SAVE_FILE) {
         return false;
     }
     for (const auto &collection : _collections) {
@@ -535,31 +567,83 @@ bool Engine::spawnNode(const char *name) {
     return false;
 }
 
-bool Engine::setNodeTranslation(const glm::vec3 &v) { return _editor.translateSelected(v); }
-bool Engine::setNodeRotation(const glm::quat &q) { return _editor.rotateSelected(q); }
-bool Engine::setNodeScale(const glm::vec3 &v) { return _editor.scaleSelected(v); }
+bool Engine::setNodeTranslation(const glm::ivec3 &mask, const glm::vec3 &v) {
+    if (auto sel = _editor.selectedNode()) {
+        glm::vec3 trans = sel->translation.data();
+        for (size_t i{0}; i < 3; ++i) {
+            if (mask[i]) {
+                trans[i] = v[i];
+            }
+        }
+        return _editor.translateSelected(trans);
+    }
+    return false;
+}
+bool Engine::setNodeRotation(const glm::ivec3 &mask, const glm::vec3 &v) {
+    if (auto sel = _editor.selectedNode()) {
+        glm::vec3 rot = sel->euler.data();
+        for (size_t i{0}; i < 3; ++i) {
+            if (mask[i]) {
+                rot[i] = v[i];
+            }
+        }
+        return _editor.rotateSelected(rot);
+    }
+    return false;
+}
+bool Engine::setNodeScale(const glm::ivec3 &mask, const glm::vec3 &v) {
+    if (auto sel = _editor.selectedNode()) {
+        glm::vec3 scale = sel->scale.data();
+        for (size_t i{0}; i < 3; ++i) {
+            if (mask[i]) {
+                scale[i] = v[i];
+            }
+        }
+        return _editor.scaleSelected(scale);
+    }
+    return false;
+}
 
-bool Engine::applyNodeTranslation(const glm::vec3 &v) {
+bool Engine::applyNodeTranslation(const glm::ivec3 &mask, const glm::vec3 &v) {
     if (auto sel = _editor.selectedNode()) {
-        return _editor.translateSelected(sel->translation.data() + v);
+        glm::vec3 trans = sel->translation.data();
+        for (size_t i{0}; i < 3; ++i) {
+            if (mask[i]) {
+                trans[i] += v[i];
+            }
+        }
+        return _editor.translateSelected(trans);
     }
     return false;
 }
-bool Engine::applyNodeRotation(const glm::quat &q) {
+bool Engine::applyNodeRotation(const glm::ivec3 &mask, const glm::vec3 &v) {
     if (auto sel = _editor.selectedNode()) {
-        return _editor.rotateSelected(sel->rotation.data() * q);
+        glm::vec3 rot = sel->euler.data();
+        for (size_t i{0}; i < 3; ++i) {
+            if (mask[i]) {
+                rot[i] += v[i];
+            }
+        }
+        return _editor.rotateSelected(rot);
     }
     return false;
 }
-bool Engine::applyNodeScale(const glm::vec3 &v) {
+bool Engine::applyNodeScale(const glm::ivec3 &mask, const glm::vec3 &v) {
     if (auto sel = _editor.selectedNode()) {
-        return _editor.scaleSelected(sel->scale.data() + v);
+        glm::vec3 scale = sel->scale.data();
+        for (size_t i{0}; i < 3; ++i) {
+            if (mask[i]) {
+                scale[i] += v[i];
+            }
+        }
+        return _editor.scaleSelected(scale);
     }
     return false;
 }
 
 void Engine::_openSaveFile(persist::SaveFile &saveFile) {
-    _saveFile = &saveFile;
+    _panel = &_panels[0];
+    _panel->ptr = &saveFile;
     gui.setTitleText(saveFile.path);
     _editor.selectNode(nullptr);
     _clickNPick.clear();
@@ -568,52 +652,49 @@ void Engine::_openSaveFile(persist::SaveFile &saveFile) {
 }
 
 bool Engine::openSaveFile(const char *fpath) {
-    for (auto &saveFile : _saveFiles) {
-        if (strcmp(saveFile.path, fpath) == 0) {
-            _openSaveFile(saveFile);
-            return true;
-        }
+    if (_saveFile.dirty) {
+        return false;
     }
+    ecs::entities().clear();
+    _saveFile.dirty = false;
+    _saveFile.nodes.clear();
     if (strlen(fpath) > 0) {
-        auto &saveFile = _saveFiles.emplace_back();
-        strcpy(saveFile.path, fpath);
-        loadWorld(fpath, saveFile);
-        _openSaveFile(saveFile);
-        assignPanel(Panel::SAVE_FILE, (void *)&saveFile);
+        strcpy(_saveFile.path, fpath);
+        loadWorld(fpath, _saveFile);
+        _openSaveFile(_saveFile);
+        _panel = &_panels[0];
+        _panel->type = Panel::SAVE_FILE;
+        _panel->ptr = &_saveFile;
         return true;
     }
     return false;
 }
 bool Engine::saveSaveFile(const char *fpath) {
-    if (_saveFile == nullptr) {
-        return false;
-    }
-    const char *path = (fpath != nullptr && strlen(fpath) > 0) ? fpath : _saveFile->path;
+    const char *path = (fpath != nullptr && strlen(fpath) > 0) ? fpath : _saveFile.path;
     if (path) {
-        persist::saveWorld(path, *_saveFile);
-        _saveFile->dirty = false;
+        persist::saveWorld(path, _saveFile);
+        _saveFile.dirty = false;
         _editor.clearHistory();
         return true;
     }
     return false;
 }
 
-bool Engine::assignPanel(Panel::Type type, void *ptr) {
+Panel *Engine::assignPanel(Panel::Type type, void *ptr) {
     const int N = sizeof(_panels) / sizeof(Panel);
-    static int nextFree{0};
+    static int nextFree{1};
     for (auto &panel : _panels) {
         if (panel.ptr == ptr) {
             assert(panel.type == panel.type);
-            return false;
+            return &panel;
         }
     }
     _panels[nextFree].ptr = ptr;
     _panels[nextFree].type = type;
-    _panels[nextFree].cameraView = {
-        {0.0f, 0.0f, 0.0f}, glm::radians(90.0f), glm::radians(15.0f), 10.0f};
+    _panels[nextFree].cameraView = {{0.0f, 0.0f, 0.0f}, 0.0f, -15.0f, 10.0f};
     changePanel(_panels + nextFree);
     nextFree = (nextFree + 1) % N;
-    return true;
+    return _panels + nextFree;
 }
 
 bool Engine::openPanel(size_t index) {
@@ -639,11 +720,10 @@ bool Engine::openPanel(size_t index) {
 
 void Engine::changePanel(Panel *panel) {
     if (_activePanel) {
-        _activePanel->cameraView = _editor.targetView();
+        _activePanel->cameraView = _camera.targetView;
     }
     _activePanel = panel;
-    _editor.setTargetView(panel->cameraView);
-    _editor.setCurrentView(panel->cameraView);
+    _camera.set(panel->cameraView);
 }
 
 void Engine::_openCollection(const assets::Collection &collection) {
@@ -651,7 +731,6 @@ void Engine::_openCollection(const assets::Collection &collection) {
     gui.setTitleText(collection.name().c_str());
     stage(*collection.scene);
     _editor.selectNode(nullptr);
-    _saveFile = nullptr;
 }
 
 bool Engine::openScene(size_t index) {
@@ -659,7 +738,7 @@ bool Engine::openScene(size_t index) {
         auto it = _collections.begin();
         std::advance(it, index);
         _openCollection(*it);
-        assignPanel(Panel::COLLECTION, (void *)&(*it));
+        _panel = assignPanel(Panel::COLLECTION, (void *)&(*it));
         return true;
     }
     return false;
@@ -668,7 +747,7 @@ bool Engine::openScene(size_t index) {
 bool Engine::openScene(const char *name) {
     if (auto *collection = findCollection(name)) {
         _openCollection(*collection);
-        assignPanel(Panel::COLLECTION, (void *)collection);
+        _panel = assignPanel(Panel::COLLECTION, (void *)collection);
         return true;
     }
     return false;
@@ -685,15 +764,11 @@ bool Engine::nodeClicked(gpu::Node *node) {
 }
 
 void Engine::quit(bool force) {
-    if (_saveFile && (_saveFile->dirty || _editor.hasHistory()) && !force) {
+    if ((_saveFile.dirty || _editor.hasHistory()) && !force) {
         return;
     }
-    if (_saveFile) {
-        strcpy(sessionData.recentFile, _saveFile->path);
-    } /*else {
-        std::memset(sessionData.recentFile, 0, sizeof(persist::SessionData::recentFile));
-    }*/
-    sessionData.cameraView = _editor.targetView();
+    strcpy(sessionData.recentFile, _saveFile.path);
+    sessionData.cameraView = _camera.targetView;
     persist::storeSession(sessionData);
     exit(0);
 }
@@ -704,19 +779,21 @@ static void _updateNodeInfo(GUI &gui, gpu::Node *node) {
         if (node->libraryNode && node->libraryNode->scene) {
             sceneName = node->libraryNode->scene->name.c_str();
         }
-        static char componentInfo[25];
+        static char componentInfo[33];
 
-        if (auto entity = (ecs::Entity *)node->extra) {
-            for (size_t i{0}; i < 24; ++i) {
-                componentInfo[23 - i] = ((1 << i) & *entity) ? '1' : '0';
+        uint32_t id = (uint32_t)(uint64_t)&node;
+        if (auto entity = node->entity) {
+            for (size_t i{0}; i < 32; ++i) {
+                componentInfo[31 - i] = ((1 << i) & *entity) ? '1' : '0';
             }
+            id = ecs::ID(entity);
         } else {
-            std::memset(componentInfo, '0', 24);
+            std::memset(componentInfo, '0', 32);
         }
-        componentInfo[24] = '\0';
-        gui.setNodeInfo(sceneName, node->name().c_str(),
+        componentInfo[32] = '\0';
+        gui.setNodeInfo(sceneName, node->name().c_str(), id,
                         node->mesh ? node->meshName().c_str() : "-", componentInfo,
-                        node->translation.data(), node->rotation.data(), node->scale.data());
+                        node->translation.data(), node->euler.data(), node->scale.data());
     }
     gui.showNodeInfo(node != nullptr);
 }
@@ -724,21 +801,21 @@ static void _updateNodeInfo(GUI &gui, gpu::Node *node) {
 void Engine::nodeSelected(gpu::Node *node) { _updateNodeInfo(gui, node); }
 
 void Engine::nodeAdded(gpu::Node *node) {
-    _saveFile->nodes.emplace_back(node);
-    _saveFile->dirty = true;
+    _saveFile.nodes.emplace_back(node);
+    _saveFile.dirty = true;
     _clickNPick.registerNode(node);
     _editor.selectNode(node);
 }
 
 void Engine::nodeRemoved(gpu::Node *node) {
-    _saveFile->nodes.erase(std::find(_saveFile->nodes.begin(), _saveFile->nodes.end(), node));
-    _saveFile->dirty = true;
+    _saveFile.nodes.erase(std::find(_saveFile.nodes.begin(), _saveFile.nodes.end(), node));
+    _saveFile.dirty = true;
     _clickNPick.unregisterNode(node);
     _editor.selectNode(nullptr);
 }
 
 void Engine::nodeCopied(gpu::Node *node) {
-    if (_saveFile) {
+    if (_panel->type == Panel::SAVE_FILE) {
         if (node->libraryNode) {
             _editor.addNode(gpu::createNode(*node->libraryNode));
         } else {
@@ -752,17 +829,17 @@ void Engine::nodeCopied(gpu::Node *node) {
 void Engine::nodeTransformed(gpu::Node *node) { _updateNodeInfo(gui, node); }
 
 gpu::Node *Engine::cycleNode(gpu::Node *prev) {
-    if (_saveFile) {
+    if (_panel->type == Panel::SAVE_FILE) {
         if (prev) {
             bool found{false};
-            for (auto *node : _saveFile->nodes) {
+            for (auto *node : _saveFile.nodes) {
                 if (found) {
                     return node;
                 }
                 found = prev == node;
             }
         }
-        return _saveFile->nodes.empty() ? nullptr : _saveFile->nodes.front();
+        return _saveFile.nodes.empty() ? nullptr : _saveFile.nodes.front();
     }
     if (prev) {
         bool found{false};
@@ -811,6 +888,7 @@ void Engine::stage(const gpu::Scene &scene) {
     for (gpu::Node *node : scene.nodes) {
         if (node->skin) {
             skinNodes.emplace_back(node);
+            _clickNPick.registerNode(node);
         } else {
             nodes.emplace_back(node);
             _clickNPick.registerNode(node);
@@ -827,13 +905,13 @@ assets::Collection *Engine::findCollection(const char *name) {
 }
 
 bool Engine::saveNodeInfo(gpu::Node *node, uint32_t &info) {
-    if (ecs::Entity *e = (ecs::Entity *)node->extra) {
+    if (ecs::Entity *e = node->entity) {
         info |= *e;
     }
     return true;
 }
 bool Engine::saveNodeExtra(gpu::Node *node, uint32_t &extra) {
-    if (ecs::Entity *e = (ecs::Entity *)node->extra) {
+    if (ecs::Entity *e = node->entity) {
         if (auto *collider = CCollider::get_pointer(e)) {
             extra |= ((0b1 & collider->transforming) << 4) |
                      ((uint8_t)collider->geometry->type() & 0b111);
@@ -841,20 +919,48 @@ bool Engine::saveNodeExtra(gpu::Node *node, uint32_t &extra) {
     }
     return true;
 }
-gpu::Scene *Engine::loadedScene(const char *name) {
+gpu::Scene *Engine::loadScene(const char *name) {
     if (auto collection = findCollection(name)) {
         return collection->scene;
     }
     return nullptr;
 }
 
-bool Engine::loadedEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info, uint32_t extra) {
+bool Engine::loadEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info, uint32_t extra) {
     *entity = info;
     auto geomType = static_cast<geom::Geometry::Type>(extra & 0b111);
     if (CController::has(entity)) {
-        _attachController(node, geomType);
+        attachController(node, geomType);
     } else if (CCollider::has(entity)) {
-        _attachCollider(node, geomType, CActor::has(entity));
+        attachCollider(node, geomType, CActor::has(entity));
+        if (geomType == geom::Geometry::Type::OBB) {
+            auto obb = ((geom::OBB *)CCollider::get(entity).geometry);
+            obb->trs = node;
+        }
+    }
+    if (node->skin) {
+        CSkinAnimated::attach(entity);
+        auto &skinAnim = CSkinAnimated::get(entity);
+        auto *collection = findCollection(node->libraryNode->scene->name.c_str());
+        for (const auto &anim : collection->animations) {
+            skinAnim.animations.emplace_back(
+                animation::createAnimation(*anim->libraryAnimation, node));
+        }
+        skinAnim.playback = animation::createPlayback(skinAnim.animations.front());
+        skinAnim.playAnimation("Idle");
     }
     return true;
+}
+
+void Engine::loadLastSession() {
+    if (persist::loadSession(sessionData)) {
+        if (strlen(sessionData.recentFile) > 0) {
+            openSaveFile(sessionData.recentFile);
+        } else {
+            _panel = &_panels[0];
+            _panel->type = _panels->SAVE_FILE;
+            _panel->ptr = &_saveFile;
+        }
+        _camera.set(sessionData.cameraView);
+    }
 }

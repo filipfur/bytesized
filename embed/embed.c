@@ -38,6 +38,10 @@ const char __shaders__vert_anim[] = {
 #embed "assets/shaders/anim.vert"
 , '\0'
 };
+const char __shaders__vert_ui[] = {
+#embed "assets/shaders/ui.vert"
+, '\0'
+};
 const char __shaders__vert_text[] = {
 #embed "assets/shaders/text.vert"
 , '\0'
