@@ -4,6 +4,7 @@
 static skydome::Sky _defaultSky{
     rgb(236, 239, 187),
     rgb(86, 113, 153),
+    Color::white,
     0.0f,
 };
 
@@ -68,31 +69,51 @@ float snoise(vec2 v){
   return 130.0 * dot(m, g);
 }
 
-    in vec2 texCoords;
-    in vec3 normal;
+in vec2 texCoords;
+in vec3 normal;
 
-    out vec4 fragColor;
+out vec4 fragColor;
 
-    uniform float u_time;
+uniform float u_time;
 
-    uniform vec3 u_color_lo;
-    uniform vec3 u_color_hi;
-    uniform float u_clouds;
+uniform vec3 u_color_lo;
+uniform vec3 u_color_hi;
+uniform float u_clouds;
 
-    const vec3 lightDir = vec3(0.0, -1.0, 0.0);
+const vec3 lightDir = vec3(0.0, -1.0, 0.0);
 
-    void main()
-    {
-        fragColor = vec4(mix(u_color_lo, u_color_hi, texCoords.y), 1.0);
-        fragColor.rgb = mix(fragColor.rgb, fragColor.rgb + fragColor.rgb * max(0.0, snoise(vec2(sin(texCoords.x * 2.0 * 3.141592) * 0.5 + 0.5 + u_time * 0.02, texCoords.y) * vec2(2,2))) * 0.5, u_clouds);
-    }
+void main()
+{
+    fragColor = vec4(mix(u_color_lo, u_color_hi, texCoords.y), 1.0);
+    fragColor.rgb = mix(fragColor.rgb, fragColor.rgb + fragColor.rgb * max(0.0, snoise(vec2(sin(texCoords.x * 2.0 * 3.141592) * 0.5 + 0.5 + u_time * 0.02, texCoords.y) * vec2(2,2))) * 0.5, u_clouds);
+}
+)";
+
+const char *skyboxFragSource2 = R"(#version 330 core
+precision highp float;
+
+in vec2 texCoords;
+in vec3 normal;
+
+out vec4 fragColor;
+
+uniform float u_time;
+
+uniform vec3 u_color_lo;
+uniform vec3 u_color_hi;
+
+void main()
+{
+    float f = smoothstep(0.5,0.6, texCoords.y);
+    fragColor = vec4(mix(u_color_lo, u_color_hi, sqrt(f)), 1.0);
+}
 )";
 
 static gpu::ShaderProgram *_shaderProgram{nullptr};
 void skydome::create() {
     _shaderProgram =
         gpu::createShaderProgram(gpu::createShader(GL_VERTEX_SHADER, skyboxVertSource),
-                                 gpu::createShader(GL_FRAGMENT_SHADER, skyboxFragSource),
+                                 gpu::createShader(GL_FRAGMENT_SHADER, skyboxFragSource2),
                                  {
                                      {"u_time", 2.2f},
                                      {"u_color_hi", _defaultSky.high.vec3()},
@@ -108,7 +129,7 @@ void skydome::setSky(const Sky &sky) {
     _shaderProgram->uniforms.at("u_color_hi") << sky.high.vec3();
     _shaderProgram->uniforms.at("u_color_lo") << sky.low.vec3();
     _shaderProgram->uniforms.at("u_clouds") << sky.clouds;
-    gpu::LightBlock_setLightColor(sky.high, sky.low);
+    gpu::LightBlock_setLightColor(sky.high, sky.low, sky.ambient);
 }
 
 void skydome::render() {

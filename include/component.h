@@ -4,6 +4,7 @@
 #include "ecs.h"
 #include "geom_primitive.h"
 #include "trs.h"
+#include <functional>
 #include <glm/glm.hpp>
 
 struct Pawn {
@@ -19,12 +20,6 @@ struct Collider {
     bool transforming;
 };
 struct Controller {
-    static constexpr uint8_t MOVE_FORWARD = 0b00000001;
-    static constexpr uint8_t MOVE_LEFT = 0b00000010;
-    static constexpr uint8_t MOVE_BACKWARD = 0b00000100;
-    static constexpr uint8_t MOVE_RIGHT = 0b00001000;
-    static constexpr uint8_t MOVE_JUMP = 0b00010000;
-
     static constexpr uint8_t STATE_ON_GROUND = 0;
     static constexpr uint8_t STATE_JUMPING = 1;
     static constexpr uint8_t STATE_FALLING = 2;
@@ -43,44 +38,46 @@ struct Controller {
 struct Gravity {
     float factor;
 };
-struct SkinAnimated {
-    std::vector<animation::Animation *> animations;
-    animation::Playback *playback;
-
-    animation::Animation *findAnimation(const char *name) {
-        for (auto anim : animations) {
-            if (anim->name.compare(name) == 0) {
-                return anim;
-            }
-        }
-        return nullptr;
-    }
-
-    animation::Playback *playAnimation(const char *name) {
-        animation::Animation *anim = findAnimation(name);
-        if (anim != playback->animation) {
-            printf("Play: %s\n", name);
-            playback->animation = anim;
-            playback->time = playback->animation->startTime;
-            for (auto &channel : anim->channels) {
-                // gpu::Node *node = channel.first;
-                animation::Channel *ch = &channel.second.at(animation::Animation::CH_TRANSLATION);
-                // node->translation = ch->frames.front().v3;
-                ch->current = ch->frames.begin();
-                ch = &channel.second.at(animation::Animation::CH_ROTATION);
-                // node->rotation = ch->frames.front().q;
-                ch->current = ch->frames.begin();
-                ch = &channel.second.at(animation::Animation::CH_SCALE);
-                // node->scale = ch->frames.front().v3;
-                ch->current = ch->frames.begin();
-            }
-        }
-        return playback;
-    }
+struct Billboard {
+    uint32_t id;
+    gpu::Texture *texture;
+};
+struct Interactable {
+    static constexpr auto noAction = [](float, gpu::Node *, gpu::Node *) {};
+    std::function<void(float, gpu::Node *, gpu::Node *)> inRadius;
+    std::function<void(float, gpu::Node *, gpu::Node *)> interaction;
+    float radii;
 };
 typedef ecs::Component<Pawn, 0> CPawn;
 typedef ecs::Component<Actor, 1> CActor;
 typedef ecs::Component<Collider, 2> CCollider;
 typedef ecs::Component<Controller, 3> CController;
 typedef ecs::Component<Gravity, 4> CGravity;
-typedef ecs::Component<SkinAnimated, 5> CSkinAnimated;
+typedef ecs::Component<Billboard, 5> CBillboard;
+typedef ecs::Component<Interactable, 6> CInteractable;
+
+inline static void __freeEntity(ecs::Entity **entity_ptr) {
+    ecs::Entity *entity = *entity_ptr;
+    if (entity) {
+        if (auto *pawn = CPawn::get_pointer(entity)) {
+            pawn->trs = nullptr;
+        }
+        if (auto *actor = CActor::get_pointer(entity)) {
+            actor->trs = nullptr;
+        }
+        if (auto *collider = CCollider::get_pointer(entity)) {
+            geom::free(collider->geometry);
+            collider->geometry = nullptr;
+        }
+        if (auto *controller = CController::get_pointer(entity)) {
+            geom::free(controller->floorSense);
+            controller->floorSense = nullptr;
+            controller->lastCollision = nullptr;
+        }
+        if (auto *billboard = CBillboard::get_pointer(entity)) {
+            billboard->texture = nullptr;
+        }
+        ecs::dispose_entity(entity);
+        *entity_ptr = nullptr;
+    }
+}

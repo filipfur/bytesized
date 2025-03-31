@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <functional>
 
-#define ECS_MAX_ENTITIES 100
+#define ECS_MAX_ENTITIES 64
 #define ECS_MAX_COMPONENTS 32
 
 namespace ecs {
@@ -12,6 +12,7 @@ namespace ecs {
 using Entity = uint32_t;
 
 Entity *create_entity();
+void dispose_entity(Entity *entity);
 void free(Entity *entity);
 
 uint32_t ID(const Entity *entity);
@@ -33,7 +34,7 @@ template <class T, uint32_t Id, bool Static = false> class Component {
         attach(args...);
     }
 
-    static bool has(const Entity *entity) { return (*entity & bit_mask()) != 0; }
+    static bool has(const Entity *entity) { return entity && (*entity & bit_mask()) != 0; }
 
     static void detach(Entity *entity) { *entity &= ~bit_mask(); }
 

@@ -34,6 +34,10 @@ const char __shaders__vert_object[] = {
 #embed "assets/shaders/object.vert"
 , '\0'
 };
+const char __shaders__vert_billboard[] = {
+#embed "assets/shaders/billboard.vert"
+, '\0'
+};
 const char __shaders__vert_anim[] = {
 #embed "assets/shaders/anim.vert"
 , '\0'

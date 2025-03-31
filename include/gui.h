@@ -32,8 +32,6 @@ struct GUI {
     glm::mat4 projection;
     glm::mat4 view;
 
-    gpu::Text *titleText{nullptr};
-
     enum NodeInfoDetail {
         NODE_INFO_TITLE,
         NODE_INFO_COMPONENTS,
@@ -45,6 +43,6 @@ struct GUI {
     };
     gpu::Text *nodeInfoRows[NODE_INFO_COUNT];
 
-    enum Frames { FRAME_FPS, FRAME_CONSOLE, FRAME_NODE_INFO, FRAME_COUNT };
+    enum Frames { FRAME_FPS, FRAME_CONSOLE, FRAME_NODE_INFO, FRAME_TITLE, FRAME_COUNT };
     Frame frames[FRAME_COUNT];
 };

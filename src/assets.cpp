@@ -12,7 +12,7 @@ assets::Collection::Collection(const library::Collection &collection)
              collection.materials_count, collection.meshes_count, collection.nodes_count,
              collection.textures_count);
     for (size_t i{0}; i < collection.animations_count; ++i) {
-        animations.emplace_back(animation::createAnimation(collection.animations[i], nullptr));
+        animations.emplace_back(gpu::createAnimation(collection.animations[i], nullptr));
     }
     if (!animations.empty()) {
         if (auto idleAnim = animationByName("Idle")) {
@@ -32,7 +32,7 @@ assets::Collection::Collection(const library::Collection &collection)
     }
 }
 
-animation::Animation *assets::Collection::animationByName(const char *name) {
+gpu::Animation *assets::Collection::animationByName(const char *name) {
     for (auto &animation : animations) {
         if (animation->name.compare(name) == 0) {
             return animation;

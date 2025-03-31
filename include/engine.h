@@ -12,9 +12,14 @@
 #include <list>
 
 struct IGame {
-    virtual void init() = 0;
-    virtual void update(float dt) = 0;
-    virtual void draw() = 0;
+    virtual void gameInit() = 0;
+    virtual void gameUpdate(float dt) = 0;
+    virtual void gameDraw() = 0;
+};
+
+struct IApplication {
+    virtual void appInit(struct Engine *engine) = 0;
+    virtual void appLoad(struct Engine *engine) = 0;
 };
 
 struct Panel {
@@ -30,9 +35,10 @@ struct Engine : public window::IEngine,
                 public IClickNPick,
                 public persist::IPersist {
 
-    Engine(Camera &camera_, Editor &editor_, Console &console_, int windowWidth, int windowHeight)
+    Engine(Camera &camera_, Editor &editor_, Console &console_, int windowWidth, int windowHeight,
+           IApplication *iApp)
         : _camera{camera_}, _editor{editor_}, _console{console_}, _clickNPick{this},
-          _windowWidth{windowWidth}, _windowHeight{windowHeight} {
+          _windowWidth{windowWidth}, _windowHeight{windowHeight}, _iApp{iApp} {
         _console.registerIConsole(this);
         _editor.registerIEditor(this);
         window::registerEngine(this);
@@ -62,6 +68,7 @@ struct Engine : public window::IEngine,
     bool applyNodeTranslation(const glm::ivec3 &, const glm::vec3 &) override;
     bool applyNodeRotation(const glm::ivec3 &, const glm::vec3 &) override;
     bool applyNodeScale(const glm::ivec3 &, const glm::vec3 &) override;
+    bool closeSaveFile();
     bool openSaveFile(const char *fpath) override;
     bool saveSaveFile(const char *fpath) override;
     bool openScene(size_t index) override;
@@ -73,7 +80,7 @@ struct Engine : public window::IEngine,
     void nodeRemoved(gpu::Node *node) override;
     void nodeCopied(gpu::Node *node) override;
     void nodeTransformed(gpu::Node *node) override;
-    gpu::Node *cycleNode(gpu::Node *prev) override;
+    gpu::Node *cycleNode(gpu::Node *prev, bool reverse) override;
 
     void attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dynamic);
     void attachController(gpu::Node *node, geom::Geometry::Type type);
@@ -82,7 +89,7 @@ struct Engine : public window::IEngine,
     void stage(const gpu::Scene &scene);
 
     assets::Collection *addCollection(const library::Collection &collection);
-    assets::Collection *loadGLB(const uint8_t *data);
+    assets::Collection *addGLB(const uint8_t *data);
     assets::Collection *findCollection(const char *name);
 
     Panel *assignPanel(Panel::Type type, void *ptr);
@@ -90,13 +97,12 @@ struct Engine : public window::IEngine,
     void changePanel(Panel *panel);
 
     void _openCollection(const assets::Collection &collection);
-    void _openSaveFile(persist::SaveFile &saveFile);
 
     bool nodeClicked(gpu::Node *node) override;
 
     bool saveNodeInfo(gpu::Node *node, uint32_t &info) override;
     bool saveNodeExtra(gpu::Node *node, uint32_t &extra) override;
-    gpu::Scene *loadScene(const char *name) override;
+    gpu::Scene *getSceneByName(const char *name) override;
     bool loadEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info, uint32_t extra) override;
 
     void loadLastSession();
@@ -111,8 +117,10 @@ struct Engine : public window::IEngine,
     int _windowHeight;
     int _drawableWidth;
     int _drawableHeight;
+    IApplication *_iApp{nullptr};
     IGame *_iGame{nullptr};
     gpu::ShaderProgram *shaderProgram;
+    gpu::ShaderProgram *billboardProgram;
     gpu::ShaderProgram *animProgram;
     gpu::ShaderProgram *textProgram;
     gpu::ShaderProgram *uiProgram;

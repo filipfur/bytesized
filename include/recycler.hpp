@@ -9,14 +9,15 @@
 template <typename T, std::size_t N> struct recycler {
     void free(T *ptr) {
         assert(_waste_count < N);
-        assert(_waste[_waste_count] == nullptr);
         _waste[_waste_count++] = ptr;
     }
 
     T *acquire() {
         if (_waste_count > 0) {
             --_waste_count;
-            return _waste[_waste_count];
+            T *t = _waste[_waste_count];
+            _waste[_waste_count] = nullptr;
+            return t;
         } else if (_data_count < N) {
             return &_data[_data_count++];
         }
@@ -37,9 +38,11 @@ template <typename T, std::size_t N> struct recycler {
     }
 
     void clear() {
-        std::memset(_data, 0, sizeof(_data));
+        for (size_t i{0}; i < N; ++i) {
+            _data[i] = {};
+            _waste[i] = nullptr;
+        }
         _data_count = 0;
-        std::memset(_waste, 0, sizeof(_waste));
         _waste_count = 0;
     }
 

@@ -75,6 +75,13 @@ struct Node : TRS {
         }
         return nullptr;
     }
+    struct Skin *getSkin() {
+        if (skin) {
+            return skin;
+        }
+        auto *n = find([](Node *n) { return n->skin; });
+        return n ? n->skin : nullptr;
+    }
 
     void render(ShaderProgram *shaderProgram);
     Node *childByName(const char *name);
@@ -89,10 +96,58 @@ struct Node : TRS {
     Material *material(size_t primitiveIndex = 0);
 };
 
+extern bool SETTINGS_LERP;
+
+struct Frame {
+    float time;
+    union {
+        glm::vec3 v3;
+        glm::quat q;
+    };
+};
+
+struct Channel {
+    std::vector<Frame> frames;
+    std::vector<Frame>::iterator current;
+};
+
+struct Animation {
+    const library::Animation *libraryAnimation;
+    float startTime;
+    float endTime;
+    enum ChannelType { CH_TRANSLATION, CH_ROTATION, CH_SCALE };
+    std::unordered_map<gpu::Node *, std::array<Channel, 3>> channels;
+    std::string_view name;
+    bool looping;
+
+    void start();
+    void stop();
+};
+
+struct Playback {
+    Animation *animation;
+    bool paused;
+    float time;
+    bool expired() { return time >= animation->endTime; }
+};
+
+Animation *createAnimation(const library::Animation &animation, gpu::Node *retargetNode);
+void freeAnimation(Animation *animation);
+
+Playback *createPlayback(Animation *animation);
+void freePlayback(Playback *playback);
+
+void animate(float dt);
+
 struct Skin {
     const library::Skin *librarySkin;
     std::vector<Node *> joints;
-    std::vector<glm::mat4> invBindMatrices;
+
+    std::vector<gpu::Animation *> animations;
+    gpu::Playback *playback;
+
+    gpu::Animation *findAnimation(const char *name);
+    gpu::Playback *playAnimation(const char *name);
 };
 
 struct Scene {
@@ -164,6 +219,7 @@ void freeText(gpu::Text *text);
 void freeTexture(Texture *texture);
 
 Material *createMaterial();
+Material *createMaterial(const Color &color);
 Material *createMaterial(gpu::Texture *texture);
 Material *createMaterial(const library::Material &material);
 void freeMaterial(Material *material);
@@ -173,6 +229,7 @@ Node *createNode(gpu::Mesh *mesh);
 Node *createNode(const gpu::Node &other);
 Node *createNode(const library::Node &node);
 void freeNode(gpu::Node *node);
+size_t nodeCount();
 
 Scene *createScene();
 Scene *createScene(const library::Scene &scene);
@@ -203,12 +260,11 @@ struct SkinBlock {
 SkinBlock &getSkinBlock();
 
 struct LightBlock {
-    glm::vec3 lightHigh;
-    float pad0;
-    glm::vec3 lightLow;
-    float pad1;
+    glm::vec4 lightHigh;
+    glm::vec4 lightLow;
+    glm::vec4 ambient;
 };
-void LightBlock_setLightColor(const Color &high, const Color &low);
+void LightBlock_setLightColor(const Color &high, const Color &low, const Color &ambient);
 
 struct GUIBlock {
     glm::mat4 projection;

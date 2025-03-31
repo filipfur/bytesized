@@ -3,18 +3,20 @@
 #include "camera.h"
 #include "ecs.h"
 #include "gpu.h"
+#include "json.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <list>
 
 namespace persist {
 
 struct IPersist {
     virtual bool saveNodeInfo(gpu::Node *node, uint32_t &info) = 0;
     virtual bool saveNodeExtra(gpu::Node *node, uint32_t &extra) = 0;
-    virtual gpu::Scene *loadScene(const char *name) = 0;
+    virtual gpu::Scene *getSceneByName(const char *name) = 0;
     virtual bool loadEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info,
                             uint32_t extra) = 0;
 };

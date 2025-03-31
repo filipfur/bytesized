@@ -32,7 +32,6 @@ add_library(bytesized
     src/time.cpp
     src/timer.cpp
     src/texture.cpp
-    src/animation.cpp
     src/assets.cpp
     src/ecs.cpp
     src/filesystem.cpp
@@ -55,8 +54,10 @@ add_library(bytesized
     src/geom_collision.cpp
     src/camera.cpp
     src/character.cpp
-    src/platformer.cpp
+    src/playercontroller.cpp
     src/skydome.cpp
+    src/playerinput.cpp
+    src/runtime.cpp
 )
 
 add_subdirectory(embed)

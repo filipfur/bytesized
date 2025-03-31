@@ -12,10 +12,20 @@ geom::Sphere &geom::Sphere::construct(const glm::vec3 *points, size_t length, TR
     return construct(c, std::max(e.x, std::max(e.y, e.z)));
 }
 bool geom::Sphere::_intersects(geom::Plane &other) { return other._intersects(*this); }
+bool geom::Sphere::_intersects(geom::Sphere &other) {
+    glm::vec3 d = other.origin() - this->origin();
+    float r = other.radii() + this->radii();
+    return glm::dot(d, d) < (r * r);
+}
 bool geom::Sphere::_intersects(geom::AABB &other) { return other._intersects(*this); }
 bool geom::Sphere::_intersects(geom::OBB &other) { return other._intersects(*this); }
 std::pair<glm::vec3, float> geom::Sphere::_separation(Plane &other) {
     return other._separation(*this);
+}
+std::pair<glm::vec3, float> geom::Sphere::_separation(Sphere &other) {
+    glm::vec3 AB = this->origin() - other.origin();
+    float dist = glm::length(AB);
+    return {glm::normalize(AB), dist - (other.radii() + this->radii())};
 }
 std::pair<glm::vec3, float> geom::Sphere::_separation(AABB &other) {
     return other._separation(*this);

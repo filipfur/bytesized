@@ -1,6 +1,7 @@
 #include "gpu_primitive.h"
 
 constexpr gpu::Sprite sprite;
+constexpr gpu::Billboard billboard;
 constexpr gpu::Plane<1, 1> plane;
 constexpr gpu::Cube cube;
 constexpr gpu::Sphere<16, 8> sphere;
@@ -48,6 +49,10 @@ library::Collection *gpu::createBuiltinPrimitives() {
         case gpu::BuiltinPrimitives::SPRITE:
             node->name = "Sprite";
             _builtinPrimitives[i] = &_populatePrimitive(sprite, mesh->primitives.emplace_back());
+            break;
+        case gpu::BuiltinPrimitives::BILLBOARD:
+            node->name = "Billboard";
+            _builtinPrimitives[i] = &_populatePrimitive(billboard, mesh->primitives.emplace_back());
             break;
         case gpu::BuiltinPrimitives::PLANE:
             node->name = "Plane";

@@ -33,3 +33,24 @@ geom::OBB *geom::createOBB() {
     geom::OBB *obb = _obbs.acquire();
     return obb;
 }
+
+void geom::free(Geometry *geometry) {
+    switch (geometry->type()) {
+    case Geometry::Type::PLANE:
+        freePlane(dynamic_cast<Plane *>(geometry));
+        break;
+    case Geometry::Type::SPHERE:
+        freeSphere(dynamic_cast<Sphere *>(geometry));
+        break;
+    case Geometry::Type::AABB:
+        freeAABB(dynamic_cast<AABB *>(geometry));
+        break;
+    case Geometry::Type::OBB:
+        freeOBB(dynamic_cast<OBB *>(geometry));
+        break;
+    }
+}
+void geom::freePlane(Plane *plane) { _planes.free(plane); }
+void geom::freeSphere(Sphere *sphere) { _spheres.free(sphere); }
+void geom::freeAABB(AABB *aabb) { _aabbs.free(aabb); }
+void geom::freeOBB(OBB *obb) { _obbs.free(obb); }

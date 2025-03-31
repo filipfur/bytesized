@@ -1,5 +1,4 @@
 #include "engine.h"
-#include "animation.h"
 #include "assets.h"
 #include "character.h"
 #include "component.h"
@@ -11,7 +10,7 @@
 #include "gpu_primitive.h"
 #include "gui.h"
 #include "persist.h"
-#include "platformer.h"
+#include "playercontroller.h"
 #include "primer.h"
 #include "skydome.h"
 #include <algorithm>
@@ -20,16 +19,14 @@
 assets::Collection *Engine::addCollection(const library::Collection &collection) {
     return &_collections.emplace_back(collection);
 }
-assets::Collection *Engine::loadGLB(const uint8_t *data) {
+assets::Collection *Engine::addGLB(const uint8_t *data) {
     return addCollection(*library::loadGLB(data, true));
 }
 
 static gpu::Framebuffer *fbo{nullptr};
 static persist::SessionData sessionData;
 static gpu::Node *gridNode{nullptr};
-static Panel *_activePanel = nullptr;
 constexpr gpu::Plane<1, 1> grid(64.0f);
-static bool _playing = false;
 
 static Vector axisVectors[] = {
     {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, rgb(255, 0, 0)},
@@ -67,7 +64,7 @@ void Engine::attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dyn
         ecs::attach<CPawn, CCollider>(entity);
         CPawn::get(entity).trs = node;
     }
-    if (auto n = node->find([](gpu::Node *n) { return n->mesh; })) {
+    if (auto *n = node->find([](gpu::Node *n) { return n->mesh && n->mesh->libraryMesh; })) {
         for (gpu::Node *child : n->children) {
             if (child->libraryNode->name.compare(0, 3, "C__") == 0) {
                 n = child;
@@ -76,11 +73,11 @@ void Engine::attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dyn
         }
         auto [positions, length] = n->mesh->libraryMesh->primitives.front().positions();
         auto &colider = CCollider::get(entity);
-        if (n->libraryNode->name.compare("C__Sphere") == 0) {
+        if (n->libraryNode->name.starts_with("C__Sphere")) {
             type = geom::Geometry::Type::SPHERE;
             n->hidden = true;
         }
-        if (n->libraryNode->name.compare("C__Box") == 0) {
+        if (n->libraryNode->name.starts_with("C__Box")) {
             type = (glm::dot(node->euler.data(), node->euler.data()) > primer::EPSILON)
                        ? geom::Geometry::Type::OBB
                        : geom::Geometry::Type::AABB;
@@ -117,6 +114,29 @@ void Engine::attachCollider(gpu::Node *node, geom::Geometry::Type type, bool dyn
             colider.transforming = true;
         } break;
         default:
+        }
+    } else {
+        node->hidden = true;
+        auto &collider = CCollider::get(node->entity);
+        geom::AABB *aabb;
+        geom::OBB *obb;
+        switch (type) {
+        case geom::Geometry::Type::AABB:
+            aabb = geom::createAABB();
+            aabb->construct(glm::vec3{-1.0f, -1.0f, -1.0f} * node->s() + node->t(),
+                            glm::vec3{1.0f, 1.0f, 1.0f} * node->s() + node->t());
+            collider.geometry = aabb;
+            collider.transforming = false;
+            break;
+        case geom::Geometry::Type::OBB:
+            obb = geom::createOBB();
+            obb->construct(glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{1.0f, 1.0f, 1.0f}, node);
+            collider.geometry = obb;
+            collider.transforming = true;
+            break;
+        default:
+            assert(false); // not implemented
+            break;
         }
     }
 }
@@ -168,6 +188,10 @@ void Engine::init(int drawableWidth, int drawableHeight) {
         gpu::builtinShader(gpu::OBJECT_VERT), gpu::builtinShader(gpu::OBJECT_FRAG),
         {{"u_color", defaultColor}, {"u_diffuse", 0}, {"u_model", glm::mat4{1.0f}}});
 
+    billboardProgram = gpu::createShaderProgram(
+        gpu::builtinShader(gpu::BILLBOARD_VERT), gpu::builtinShader(gpu::OBJECT_FRAG),
+        {{"u_color", defaultColor}, {"u_diffuse", 0}, {"u_model", glm::mat4{1.0f}}});
+
     animProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::ANIM_VERT),
                                            gpu::builtinShader(gpu::OBJECT_FRAG),
                                            {//{"u_projection", perspectiveProjection},
@@ -187,19 +211,27 @@ void Engine::init(int drawableWidth, int drawableHeight) {
                                             {"u_model", glm::mat4{1.0f}},
                                             {"u_metallic", 1.0f},
                                             {"u_time", 0.0f}});
-    gpu::builtinUBO(gpu::UBO_CAMERA)->bindShaders({shaderProgram, animProgram, textProgram});
-    gpu::builtinUBO(gpu::UBO_LIGHT)->bindShaders({shaderProgram, animProgram, textProgram});
+    gpu::builtinUBO(gpu::UBO_CAMERA)
+        ->bindShaders({
+            shaderProgram,
+            billboardProgram,
+            animProgram,
+            textProgram,
+        });
+    gpu::builtinUBO(gpu::UBO_LIGHT)
+        ->bindShaders({
+            shaderProgram,
+            billboardProgram,
+            animProgram,
+            textProgram,
+        });
 
-    // glm::mat4 guiBlock[] = {gui.projection, gui.view};
-    //  gpu::UniformBuffer *guiUBO = gpu::builtinUBO(gpu::BuiltinUBO::UBO_GUI);
-    //  guiUBO->bufferData(sizeof(glm::mat4) * 2, guiBlock);
     uiProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::UI_VERT),
                                          gpu::builtinShader(gpu::TEXTURE_FRAG),
                                          {{"u_projection", gui.projection},
                                           {"u_view", gui.view},
                                           {"u_diffuse", 0},
                                           {"u_model", glm::mat4{1.0f}}});
-    // guiUBO->emplace(uiProgram);
 
     uiTextProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::UI_VERT),
                                              gpu::builtinShader(gpu::TEXT_FRAG),
@@ -211,9 +243,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
                                               {"u_model", glm::mat4{1.0f}},
                                               {"u_metallic", 0.0f},
                                               {"u_time", 0.0f}});
-    // guiUBO->emplace(uiTextProgram);
     skydome::create();
-
     screenProgram =
         gpu::createShaderProgram(gpu::builtinShader(gpu::SCREEN_VERT),
                                  gpu::builtinShader(gpu::TEXTURE_FRAG), {{"u_texture", 0}});
@@ -258,19 +288,10 @@ void Engine::init(int drawableWidth, int drawableHeight) {
         }
         return false;
     });
-    _console.addCustomCommand(":spyro", [this](const char *key) {
+    _console.addCustomCommand(":spyro", [this](const char *) {
         if (auto sel = _editor.selectedNode()) {
             attachController(sel, geom::Geometry::Type::SPHERE);
             nodeSelected(sel);
-            return true;
-        }
-        return false;
-    });
-    _console.addCustomCommand(":stop", [this](const char * /*key*/) {
-        if (_playing) {
-            _playing = false;
-            _editor.disable(false);
-            SDL_SetRelativeMouseMode(SDL_FALSE);
             return true;
         }
         return false;
@@ -309,11 +330,14 @@ void Engine::init(int drawableWidth, int drawableHeight) {
         }
         return false;
     });
+    if (_iApp) {
+        _iApp->appInit(this);
+    }
 }
 
 bool Engine::update(float dt) {
     if (_iGame) {
-        _iGame->update(dt);
+        _iGame->gameUpdate(dt);
     } else {
         _editor.setTStep(_console.settingFloat("tstep"));
         _editor.setRStep(_console.settingFloat("rstep"));
@@ -329,7 +353,7 @@ bool Engine::update(float dt) {
         }
     }
     _camera.update(dt);
-    animation::animate(dt);
+    gpu::animate(dt);
     return true;
 }
 
@@ -340,7 +364,7 @@ void Engine::resize(int drawableWidth, int drawableHeight) {
 
 void Engine::startGame(IGame *iGame) {
     _iGame = iGame;
-    _iGame->init();
+    _iGame->gameInit();
     _editor.selectNode(nullptr);
     _editor.disable(true);
 }
@@ -350,10 +374,13 @@ void Engine::endGame() {
     _editor.disable(false);
 }
 
-static void _renderNodes(Editor &editor, Console &console, gpu::ShaderProgram *shaderProgram,
+static void _renderNodes(Editor &editor, gpu::ShaderProgram *shaderProgram,
                          std::vector<gpu::Node *> &nodes, bool skinned) {
     for (auto *node : nodes) {
         if ((node->skin == nullptr) == skinned) {
+            continue;
+        }
+        if (CBillboard::has(node->entity)) {
             continue;
         }
         if (node == editor.selectedNode()) {
@@ -400,7 +427,7 @@ void Engine::draw() {
     gpu::CameraBlock_setViewPos(view, _camera.currentView.center);
 
     if (_iGame) {
-        _iGame->draw();
+        _iGame->gameDraw();
     } else {
         float t = Time::seconds();
         _clickNPick.update(view);
@@ -418,20 +445,31 @@ void Engine::draw() {
         if (_panel) {
             if (_panel->type == Panel::SAVE_FILE) {
                 shaderProgram->use();
-                _renderNodes(_editor, _console, shaderProgram, _saveFile.nodes, false);
+                _renderNodes(_editor, shaderProgram, _saveFile.nodes, false);
+
+                billboardProgram->use();
+                for (gpu::Node *node : _saveFile.nodes) {
+                    if (auto *billboard = CBillboard::get_pointer(node->entity)) {
+                        billboardProgram->uniforms.at("u_color") << Color::white.vec4();
+                        billboardProgram->uniforms.at("u_model") << node->model();
+                        glActiveTexture(GL_TEXTURE0);
+                        billboard->texture->bind();
+                        node->primitive()->render();
+                    }
+                }
 
                 animProgram->use();
                 // animProgram->uniforms.at("u_view") << view;
-                _renderNodes(_editor, _console, animProgram, _saveFile.nodes, true);
+                _renderNodes(_editor, animProgram, _saveFile.nodes, true);
             } else {
                 // render objects
                 shaderProgram->use();
-                _renderNodes(_editor, _console, shaderProgram, nodes, false);
+                _renderNodes(_editor, shaderProgram, nodes, false);
 
                 // render skeletal animations
                 animProgram->use();
                 // animProgram->uniforms.at("u_view") << view;
-                _renderNodes(_editor, _console, animProgram, skinNodes, true);
+                _renderNodes(_editor, animProgram, skinNodes, true);
 
                 // render texts
                 textProgram->use();
@@ -457,13 +495,6 @@ void Engine::draw() {
         for (auto &vector : axisVectors) {
             gpu::renderVector(shaderProgram, vector);
         }
-        for (size_t i{0}; i < 3; ++i) {
-            auto &vector = axisVectors[i];
-            vector.O = _camera.currentView.center;
-            vector.Ray = primer::AXES[i];
-            vector.hidden = false;
-            gpu::renderVector(shaderProgram, vector);
-        }
         for (auto &vector : vectors) {
             gpu::renderVector(shaderProgram, vector);
         }
@@ -486,7 +517,13 @@ void Engine::draw() {
 bool Engine::keyDown(int key, int /*mods*/) {
     switch (key) {
     case SDLK_0:
-        return openSaveFile(_saveFile.path);
+        _clickNPick.clear();
+        _panel = &_panels[0];
+        _editor.selectNode(nullptr);
+        std::for_each(_saveFile.nodes.begin(), _saveFile.nodes.end(),
+                      [this](gpu::Node *node) { _clickNPick.registerNode(node); });
+        _camera.set(_panel->cameraView);
+        return true;
     case SDLK_1:
     case SDLK_2:
     case SDLK_3:
@@ -522,7 +559,7 @@ bool Engine::keyDown(int key, int /*mods*/) {
         _camera.set({{0.0f, 0.0f, 0.0f}, -90.0f, -30.0f, 10.0f});
         return true;
     // case SDLK_l:
-    //     animation::SETTINGS_LERP = !animation::SETTINGS_LERP;
+    //     gpu::SETTINGS_LERP = !gpu::SETTINGS_LERP;
     //     return true;
     case SDLK_ESCAPE:
         quit(false);
@@ -641,30 +678,42 @@ bool Engine::applyNodeScale(const glm::ivec3 &mask, const glm::vec3 &v) {
     return false;
 }
 
-void Engine::_openSaveFile(persist::SaveFile &saveFile) {
-    _panel = &_panels[0];
-    _panel->ptr = &saveFile;
-    gui.setTitleText(saveFile.path);
-    _editor.selectNode(nullptr);
-    _clickNPick.clear();
-    std::for_each(saveFile.nodes.begin(), saveFile.nodes.end(),
-                  [this](gpu::Node *node) { _clickNPick.registerNode(node); });
+bool Engine::closeSaveFile() {
+    if (!_saveFile.nodes.empty()) {
+        _saveFile.dirty = false;
+        for (gpu::Node *node : _saveFile.nodes) {
+            __freeEntity(&node->entity);
+            gpu::freeNode(node);
+        }
+        ecs::entities().clear();
+        _editor.clearHistory();
+        _saveFile.nodes.clear();
+        return true;
+    }
+    return false;
 }
 
 bool Engine::openSaveFile(const char *fpath) {
     if (_saveFile.dirty) {
         return false;
     }
-    ecs::entities().clear();
-    _saveFile.dirty = false;
-    _saveFile.nodes.clear();
+    closeSaveFile();
+    _clickNPick.clear();
     if (strlen(fpath) > 0) {
         strcpy(_saveFile.path, fpath);
         loadWorld(fpath, _saveFile);
-        _openSaveFile(_saveFile);
+        _panel = &_panels[0];
+        _panel->ptr = &_saveFile;
+        gui.setTitleText(_saveFile.path);
+        _editor.selectNode(nullptr);
+        std::for_each(_saveFile.nodes.begin(), _saveFile.nodes.end(),
+                      [this](gpu::Node *node) { _clickNPick.registerNode(node); });
         _panel = &_panels[0];
         _panel->type = Panel::SAVE_FILE;
         _panel->ptr = &_saveFile;
+        if (_iApp) {
+            _iApp->appLoad(this);
+        }
         return true;
     }
     return false;
@@ -675,6 +724,7 @@ bool Engine::saveSaveFile(const char *fpath) {
         persist::saveWorld(path, _saveFile);
         _saveFile.dirty = false;
         _editor.clearHistory();
+        openSaveFile(path);
         return true;
     }
     return false;
@@ -694,13 +744,13 @@ Panel *Engine::assignPanel(Panel::Type type, void *ptr) {
     _panels[nextFree].cameraView = {{0.0f, 0.0f, 0.0f}, 0.0f, -15.0f, 10.0f};
     changePanel(_panels + nextFree);
     nextFree = (nextFree + 1) % N;
-    return _panels + nextFree;
+    return _panel;
 }
 
 bool Engine::openPanel(size_t index) {
     if (index < 10) {
         auto &panel = _panels[index];
-        if (&panel == _activePanel) {
+        if (&panel == _panel) {
             return false;
         }
         switch (panel.type) {
@@ -708,7 +758,7 @@ bool Engine::openPanel(size_t index) {
             _openCollection(*((assets::Collection *)panel.ptr));
             break;
         case Panel::SAVE_FILE:
-            _openSaveFile(*((persist::SaveFile *)panel.ptr));
+            openSaveFile(((persist::SaveFile *)panel.ptr)->path);
             break;
         default:
             return false;
@@ -719,10 +769,10 @@ bool Engine::openPanel(size_t index) {
 }
 
 void Engine::changePanel(Panel *panel) {
-    if (_activePanel) {
-        _activePanel->cameraView = _camera.targetView;
+    if (_panel) {
+        _panel->cameraView = _camera.targetView;
     }
-    _activePanel = panel;
+    _panel = panel;
     _camera.set(panel->cameraView);
 }
 
@@ -754,11 +804,9 @@ bool Engine::openScene(const char *name) {
 }
 
 bool Engine::nodeClicked(gpu::Node *node) {
-    if (!_playing) {
-        if (node) {
-            _editor.selectNode(node);
-            return true;
-        }
+    if (node) {
+        _editor.selectNode(node);
+        return true;
     }
     return false;
 }
@@ -828,38 +876,40 @@ void Engine::nodeCopied(gpu::Node *node) {
 
 void Engine::nodeTransformed(gpu::Node *node) { _updateNodeInfo(gui, node); }
 
-gpu::Node *Engine::cycleNode(gpu::Node *prev) {
+static gpu::Node *_cycleNode(std::vector<gpu::Node *> nodes, gpu::Node *cur, bool reverse) {
+    if (nodes.empty()) {
+        return nullptr;
+    }
+    bool found{false};
+    auto *trail = nodes.front();
+    for (gpu::Node *node : nodes) {
+        if (found) {
+            return node;
+        }
+        found = (node == cur);
+        if (reverse && found) {
+            return trail;
+        }
+        trail = node;
+    }
+    return nullptr;
+}
+
+gpu::Node *Engine::cycleNode(gpu::Node *cur, bool reverse) {
+    if (_panel == nullptr) {
+        return nullptr;
+    }
     if (_panel->type == Panel::SAVE_FILE) {
-        if (prev) {
-            bool found{false};
-            for (auto *node : _saveFile.nodes) {
-                if (found) {
-                    return node;
-                }
-                found = prev == node;
-            }
+        if (cur) {
+            return _cycleNode(_saveFile.nodes, cur, reverse);
         }
         return _saveFile.nodes.empty() ? nullptr : _saveFile.nodes.front();
     }
-    if (prev) {
-        bool found{false};
-        for (gpu::Node *node : nodes) {
-            if (found) {
-                return node;
-            }
-            if (node == prev) {
-                found = true;
-            }
+    if (cur) {
+        if (gpu::Node *node = _cycleNode(nodes, cur, reverse)) {
+            return node;
         }
-        for (gpu::Node *node : skinNodes) {
-            if (found) {
-                return node;
-            }
-            if (node == prev) {
-                found = true;
-            }
-        }
-        assert(found);
+        return _cycleNode(skinNodes, cur, reverse);
     }
     return nodes.empty() ? nullptr : nodes.front();
 }
@@ -916,10 +966,13 @@ bool Engine::saveNodeExtra(gpu::Node *node, uint32_t &extra) {
             extra |= ((0b1 & collider->transforming) << 4) |
                      ((uint8_t)collider->geometry->type() & 0b111);
         }
+        if (auto *billboard = CBillboard::get_pointer(e)) {
+            extra |= billboard->id;
+        }
     }
     return true;
 }
-gpu::Scene *Engine::loadScene(const char *name) {
+gpu::Scene *Engine::getSceneByName(const char *name) {
     if (auto collection = findCollection(name)) {
         return collection->scene;
     }
@@ -938,16 +991,25 @@ bool Engine::loadEntity(ecs::Entity *entity, gpu::Node *node, uint32_t info, uin
             obb->trs = node;
         }
     }
+    if (auto *pawn = CPawn::get_pointer(entity)) {
+        pawn->trs = node;
+    } else if (auto *actor = CActor::get_pointer(entity)) {
+        actor->trs = node;
+        actor->mass = 1.0f;
+        actor->restitution = 0.5f;
+        actor->velocity = {};
+    }
+    if (auto *billboard = CBillboard::get_pointer(entity)) {
+        billboard->id = extra;
+    }
     if (node->skin) {
-        CSkinAnimated::attach(entity);
-        auto &skinAnim = CSkinAnimated::get(entity);
         auto *collection = findCollection(node->libraryNode->scene->name.c_str());
         for (const auto &anim : collection->animations) {
-            skinAnim.animations.emplace_back(
-                animation::createAnimation(*anim->libraryAnimation, node));
+            node->skin->animations.emplace_back(
+                gpu::createAnimation(*anim->libraryAnimation, node));
         }
-        skinAnim.playback = animation::createPlayback(skinAnim.animations.front());
-        skinAnim.playAnimation("Idle");
+        node->skin->playback = gpu::createPlayback(node->skin->animations.front());
+        // skinAnim.playAnimation("Idle");
     }
     return true;
 }
@@ -961,6 +1023,7 @@ void Engine::loadLastSession() {
             _panel->type = _panels->SAVE_FILE;
             _panel->ptr = &_saveFile;
         }
+        sessionData.cameraView.yaw = primer::normalizedAngle(sessionData.cameraView.yaw);
         _camera.set(sessionData.cameraView);
     }
 }

@@ -27,6 +27,11 @@ glm::mat4 &TRS::model() {
     return _model;
 }
 
+glm::vec3 TRS::position() {
+    auto &m = model();
+    return {m[3][0], m[3][1], m[3][2]};
+}
+
 TRS *TRS::parent() { return _parent; }
 
 void TRS::setParent(TRS *parent) { _parent = parent; }

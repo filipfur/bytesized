@@ -11,23 +11,17 @@ void Camera::set(const CameraView &cameraView) {
     targetView = cameraView;
 }
 
-float _normalizeRadians(float rad) {
-    static constexpr float pi2 = glm::pi<float>() * 2.0f;
-    while (rad > glm::pi<float>()) {
-        rad -= pi2;
-    }
-    while (rad < glm::pi<float>()) {
-        rad += pi2;
-    }
-    return rad;
-}
-
 void Camera::update(float dt) {
-    static constexpr float LERP_SPEED = 6.0f;
-    currentView.yaw = glm::mix(currentView.yaw, targetView.yaw, LERP_SPEED * dt);
-    currentView.pitch = glm::mix(currentView.pitch, targetView.pitch, LERP_SPEED * dt);
-    currentView.center = glm::mix(currentView.center, targetView.center, LERP_SPEED * dt);
-    currentView.distance = glm::mix(currentView.distance, targetView.distance, LERP_SPEED * dt);
+    float minAngle = primer::angleDistance(currentView.yaw, targetView.yaw);
+    float absMinAngle = std::abs(minAngle);
+    if (absMinAngle > 0.1f) {
+        currentView.yaw += (minAngle / absMinAngle) * rotationalSpeed.x * dt;
+    }
+    // printf("current.yaw=%f target.yaw=%f\n", currentView.yaw, targetView.yaw);
+    currentView.yaw = glm::mix(currentView.yaw, targetView.yaw, rotationalSpeed.x * dt);
+    currentView.pitch = glm::mix(currentView.pitch, targetView.pitch, rotationalSpeed.y * dt);
+    currentView.center = glm::mix(currentView.center, targetView.center, moveSpeed * dt);
+    currentView.distance = glm::mix(currentView.distance, targetView.distance, zoomSpeed * dt);
     _dirtyView = true;
 }
 
@@ -44,3 +38,12 @@ const glm::mat4 &Camera::view() {
 }
 
 const glm::vec3 &Camera::orientation() { return _orientation; }
+
+void Camera::yawFromDirection(const glm::vec3 &from, const glm::vec3 &to) {
+    return yawFromDirection(glm::normalize(to - from));
+}
+void Camera::yawFromDirection(const glm::vec3 &d) {
+    currentView.yaw = primer::normalizedAngle(currentView.yaw);
+    targetView.yaw = primer::normalizedAngle(targetView.yaw);
+    targetView.yaw = glm::degrees(std::atan2f(-d.x, -d.z));
+}

@@ -91,7 +91,8 @@ struct Node : public TRS {
 struct Skin {
     std::string name;
     std::vector<Node *> joints;
-    Accessor *inverseBindMatrices;
+    Accessor *ibmData;
+    std::vector<glm::mat4> inverseBindMatrices;
 };
 
 struct Scene {

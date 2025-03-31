@@ -4,6 +4,9 @@
 
 #include <glm/glm.hpp>
 
+// #pragma clang diagnostic push
+// #pragma clang diagnostic ignored "-Wunused-parameter"
+
 namespace geom {
 
 glm::vec3 _closestPointAABB(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &e);
@@ -26,29 +29,29 @@ struct Geometry {
     virtual glm::vec3 origin() = 0;
     virtual glm::vec3 supportPoint(const glm::vec3 &D) = 0;
 
-    virtual bool isTrivialIntersect(Geometry &other) = 0;
-    virtual bool _isTrivialIntersect(struct Plane &other) { return false; }
-    virtual bool _isTrivialIntersect(struct Sphere &other) { return false; }
-    virtual bool _isTrivialIntersect(struct AABB &other) { return false; }
-    virtual bool _isTrivialIntersect(struct OBB &other) { return false; }
+    virtual bool isTrivialIntersect(Geometry &) = 0;
+    virtual bool _isTrivialIntersect(struct Plane &) { return false; }
+    virtual bool _isTrivialIntersect(struct Sphere &) { return false; }
+    virtual bool _isTrivialIntersect(struct AABB &) { return false; }
+    virtual bool _isTrivialIntersect(struct OBB &) { return false; }
 
-    virtual bool intersects(Geometry &other) = 0;
-    virtual bool _intersects(struct Plane &other) { return false; }
-    virtual bool _intersects(struct Sphere &other) { return false; }
-    virtual bool _intersects(struct AABB &other) { return false; }
-    virtual bool _intersects(struct OBB &other) { return false; }
+    virtual bool intersects(Geometry &) = 0;
+    virtual bool _intersects(struct Plane &) { return false; }
+    virtual bool _intersects(struct Sphere &) { return false; }
+    virtual bool _intersects(struct AABB &) { return false; }
+    virtual bool _intersects(struct OBB &) { return false; }
 
     virtual std::pair<glm::vec3, float> separation(Geometry &other) = 0;
-    virtual std::pair<glm::vec3, float> _separation(struct Plane &other) {
+    virtual std::pair<glm::vec3, float> _separation(struct Plane &) {
         return {{0.0f, 0.0f, 0.0f}, 0.0f};
     }
-    virtual std::pair<glm::vec3, float> _separation(struct Sphere &other) {
+    virtual std::pair<glm::vec3, float> _separation(struct Sphere &) {
         return {{0.0f, 0.0f, 0.0f}, 0.0f};
     }
-    virtual std::pair<glm::vec3, float> _separation(struct AABB &other) {
+    virtual std::pair<glm::vec3, float> _separation(struct AABB &) {
         return {{0.0f, 0.0f, 0.0f}, 0.0f};
     }
-    virtual std::pair<glm::vec3, float> _separation(struct OBB &other) {
+    virtual std::pair<glm::vec3, float> _separation(struct OBB &) {
         return {{0.0f, 0.0f, 0.0f}, 0.0f};
     }
 
@@ -67,16 +70,16 @@ struct Plane : public Geometry {
     float distance; // from the origin
     Type type() override { return Type::PLANE; };
     bool isTrivialIntersect(Geometry &other) override { return other._isTrivialIntersect(*this); }
-    bool _isTrivialIntersect(struct Plane &other) override { return true; }
-    bool _isTrivialIntersect(struct Sphere &other) override { return true; }
-    bool _isTrivialIntersect(struct AABB &other) override { return true; }
-    bool _isTrivialIntersect(struct OBB &other) override { return true; }
+    bool _isTrivialIntersect(struct Plane &) override { return true; }
+    bool _isTrivialIntersect(struct Sphere &) override { return true; }
+    bool _isTrivialIntersect(struct AABB &) override { return true; }
+    bool _isTrivialIntersect(struct OBB &) override { return true; }
     bool intersects(geom::Geometry &other) override { return other._intersects(*this); }
     bool _intersects(struct Plane &other) override;
     bool _intersects(struct Sphere &other) override;
     bool _intersects(struct AABB &other) override;
     bool _intersects(struct OBB &other) override;
-    bool rayIntersect(const glm::vec3 &p, const glm::vec3 &d, float &tmin, float &tmax) override {
+    bool rayIntersect(const glm::vec3 &, const glm::vec3 &, float &, float &) override {
         return false;
     }
     std::pair<glm::vec3, float> separation(Geometry &other) override {
@@ -99,23 +102,23 @@ struct Sphere : public Geometry {
 
     Type type() override { return Type::SPHERE; }
     bool isTrivialIntersect(Geometry &other) override { return other._isTrivialIntersect(*this); }
-    bool _isTrivialIntersect(struct Plane &other) override { return true; }
-    // bool _isTrivialIntersect(struct Sphere &other) override { return true; }
-    bool _isTrivialIntersect(struct AABB &other) override { return true; }
-    bool _isTrivialIntersect(struct OBB &other) override { return true; }
+    bool _isTrivialIntersect(struct Plane &) override { return true; }
+    bool _isTrivialIntersect(struct Sphere &) override { return true; }
+    bool _isTrivialIntersect(struct AABB &) override { return true; }
+    bool _isTrivialIntersect(struct OBB &) override { return true; }
     bool intersects(geom::Geometry &other) override { return other._intersects(*this); }
     bool _intersects(struct Plane &other) override;
-    // bool _intersects(struct Sphere &other) override;
+    bool _intersects(struct Sphere &other) override;
     bool _intersects(struct AABB &other) override;
     bool _intersects(struct OBB &other) override;
-    bool rayIntersect(const glm::vec3 &p, const glm::vec3 &d, float &tmin, float &tmax) override {
+    bool rayIntersect(const glm::vec3 &, const glm::vec3 &, float &, float &) override {
         return false;
     }
     std::pair<glm::vec3, float> separation(Geometry &other) override {
         return other._separation(*this);
     }
     std::pair<glm::vec3, float> _separation(struct Plane &other) override;
-    // std::pair<glm::vec3, float> _separation(struct Sphere &other) override;
+    std::pair<glm::vec3, float> _separation(struct Sphere &other) override;
     std::pair<glm::vec3, float> _separation(struct AABB &other) override;
     std::pair<glm::vec3, float> _separation(struct OBB &other) override;
     glm::vec3 origin() override;
@@ -139,9 +142,9 @@ struct AABB : public Geometry {
     glm::vec3 _extents;
     Type type() override { return Type::AABB; }
     bool isTrivialIntersect(Geometry &other) override { return other._isTrivialIntersect(*this); }
-    bool _isTrivialIntersect(struct Plane &other) override { return true; }
-    bool _isTrivialIntersect(struct Sphere &other) override { return true; }
-    bool _isTrivialIntersect(struct AABB &other) override { return true; }
+    bool _isTrivialIntersect(struct Plane &) override { return true; }
+    bool _isTrivialIntersect(struct Sphere &) override { return true; }
+    bool _isTrivialIntersect(struct AABB &) override { return true; }
     // bool _isTrivialIntersect(struct OBB &other) override{ return true; }
     bool intersects(geom::Geometry &other) override { return other._intersects(*this); }
     bool _intersects(struct Plane &other) override;
@@ -172,16 +175,16 @@ struct OBB : public Geometry {
     glm::vec3 extents();
     Type type() override { return Type::OBB; }
     bool isTrivialIntersect(Geometry &other) override { return other._isTrivialIntersect(*this); }
-    bool _isTrivialIntersect(struct Plane &other) override { return true; }
-    bool _isTrivialIntersect(struct Sphere &other) override { return true; }
+    bool _isTrivialIntersect(struct Plane &) override { return true; }
+    bool _isTrivialIntersect(struct Sphere &) override { return true; }
     // bool _isTrivialIntersect(struct AABB &other) override {return true; }
-    bool _isTrivialIntersect(struct OBB &other) override { return true; }
+    bool _isTrivialIntersect(struct OBB &) override { return true; }
     bool intersects(geom::Geometry &other) override { return other._intersects(*this); }
     bool _intersects(struct Plane &other) override;
     bool _intersects(struct Sphere &other) override;
     // bool _intersects(struct AABB &other) override;
     bool _intersects(struct OBB &other) override;
-    bool rayIntersect(const glm::vec3 &p, const glm::vec3 &d, float &tmin, float &tmax) override {
+    bool rayIntersect(const glm::vec3 &, const glm::vec3 &, float &, float &) override {
         return false;
     }
     std::pair<glm::vec3, float> separation(Geometry &other) override {
@@ -200,4 +203,12 @@ Sphere *createSphere();
 AABB *createAABB();
 OBB *createOBB();
 
+void free(Geometry *geometry);
+void freePlane(Plane *plane);
+void freeSphere(Sphere *sphere);
+void freeAABB(AABB *aabb);
+void freeOBB(OBB *obb);
+
 } // namespace geom
+
+// #pragma clang diagnostic pop

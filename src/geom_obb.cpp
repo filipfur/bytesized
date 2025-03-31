@@ -73,7 +73,7 @@ geom::OBB &geom::OBB::construct(const glm::vec3 *points, size_t length, TRS *trs
     glm::vec3 c_ = min + e_;
     return construct(c_, e_, trs);
 }
-bool geom::OBB::_intersects(geom::Plane &other) { return false; }
+bool geom::OBB::_intersects(geom::Plane &) { return false; }
 bool geom::OBB::_intersects(geom::Sphere &other) {
     const glm::vec3 sc = other.origin();
     // glm::vec3 ab = b - a;
@@ -198,9 +198,7 @@ bool geom::OBB::_intersects(geom::OBB &other) {
     return true;
 }
 
-std::pair<glm::vec3, float> geom::OBB::_separation(Plane &other) {
-    return {{0.0f, 0.0f, 0.0f}, 0.0f};
-}
+std::pair<glm::vec3, float> geom::OBB::_separation(Plane &) { return {{0.0f, 0.0f, 0.0f}, 0.0f}; }
 std::pair<glm::vec3, float> geom::OBB::_separation(Sphere &other) {
     return _obbSphereSeparation(origin(), extents(), other.origin(), other.radii(), trs->model());
 }

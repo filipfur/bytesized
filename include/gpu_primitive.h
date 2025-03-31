@@ -63,6 +63,33 @@ struct Sprite {
     uint16_t indices[6];
 };
 
+struct Billboard {
+    constexpr Billboard()
+        : positions{
+              {-0.5f, 0.0f, 0.0f},
+              {0.5f, 0.0f, 0.0f},
+              {-0.5f, 1.0f, 0.0f},
+              {0.5f, 1.0f, 0.0f},
+          },
+          normals{
+              {0.0f, 0.0f, 1.0f},
+              {0.0f, 0.0f, 1.0f},
+              {0.0f, 0.0f, 1.0f},
+              {0.0f, 0.0f, 1.0f},
+          },
+          uvs{
+              {0.0f, 0.0f},
+              {1.0f, 0.0f},
+              {0.0f, 1.0f},
+              {1.0f, 1.0f},
+          },
+          indices{0, 1, 2, 1, 3, 2} {}
+    glm::vec3 positions[4];
+    glm::vec3 normals[4];
+    glm::vec2 uvs[4];
+    uint16_t indices[6];
+};
+
 /*constexpr std::pair<std::array<float, 10>, std::array<uint16_t, 10>> Cube() {
     std::array<float, 10> vs;
     std::array<uint16_t, 10> is;
@@ -251,7 +278,7 @@ template <std::size_t segments, std::size_t discs> struct Sphere {
 
 library::Collection *createBuiltinPrimitives();
 
-enum BuiltinPrimitives { SPRITE, PLANE, CUBE, SPHERE, CYLINDER, CONE, PRIMITIVE_COUNT };
+enum BuiltinPrimitives { SPRITE, BILLBOARD, PLANE, CUBE, SPHERE, CYLINDER, CONE, PRIMITIVE_COUNT };
 gpu::Primitive *builtinPrimitives(BuiltinPrimitives builtinPrimitives);
 
 } // namespace gpu

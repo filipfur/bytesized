@@ -30,7 +30,7 @@ struct IEditor {
     virtual void nodeRemoved(gpu::Node *node) = 0;
     virtual void nodeCopied(gpu::Node *node) = 0;
     virtual void nodeTransformed(gpu::Node *node) = 0;
-    virtual gpu::Node *cycleNode(gpu::Node *node) = 0;
+    virtual gpu::Node *cycleNode(gpu::Node *node, bool reverse) = 0;
 };
 
 struct Editor : public window::IMouseListener,

@@ -45,6 +45,9 @@ struct Frame {
     float height() { return node->scale.y; }
 
     void renderPanels(gpu::ShaderProgram *shaderProgram) {
+        if (node->hidden) {
+            return;
+        }
         if (text) {
             return;
         }
@@ -57,6 +60,9 @@ struct Frame {
     }
 
     void renderTexts(gpu::ShaderProgram *shaderProgram) {
+        if (node->hidden) {
+            return;
+        }
         if (text) {
             text->node->render(shaderProgram);
         } else {

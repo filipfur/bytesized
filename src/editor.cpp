@@ -145,6 +145,15 @@ bool Editor::mouseMoved(float /*x*/, float /*y*/, float xrel, float yrel) {
     return true;
 }
 
+static void _zoom(Camera &camera, bool zoomIn) {
+    if (camera.targetView.distance <= 1.0f) {
+        camera.targetView.distance *= zoomIn ? 0.5f : 2.0f;
+    } else {
+        camera.targetView.distance =
+            glm::round(camera.targetView.distance + (zoomIn ? -1.0f : 1.0f));
+    }
+}
+
 bool Editor::mouseScrolled(float x, float y) {
     SDL_Keymod mod = SDL_GetModState();
 
@@ -157,6 +166,12 @@ bool Editor::mouseScrolled(float x, float y) {
     } else if (mod & KMOD_LGUI) {
         _camera.targetView.center.y -= y;
         _camera.targetView.center.y = glm::round(_camera.targetView.center.y * 10.0f) * 0.1f;
+    } else if (mod & KMOD_CTRL) {
+        if (y < 0) {
+            _zoom(_camera, false);
+        } else if (y > 0) {
+            _zoom(_camera, true);
+        }
     } else {
         _camera.targetView.yaw += x * 10.0f;
         _camera.targetView.pitch -= y * 10.0f;
@@ -205,7 +220,7 @@ bool Editor::keyDown(int key, int mods) {
     }
     switch (key) {
     case SDLK_TAB:
-        selectNode(_iEditor->cycleNode(_selectedNode));
+        selectNode(_iEditor->cycleNode(_selectedNode, mods & KMOD_SHIFT));
         // fall-through
     case SDLK_SPACE:
         if (_selectedNode) {
@@ -213,18 +228,10 @@ bool Editor::keyDown(int key, int mods) {
         }
         return true;
     case SDLK_MINUS:
-        if (_camera.targetView.distance <= 1.0f) {
-            _camera.targetView.distance /= 0.9f;
-        } else {
-            _camera.targetView.distance = glm::round(_camera.targetView.distance + 1.0f);
-        }
+        _zoom(_camera, false);
         return true;
     case SDLK_PLUS:
-        if (_camera.targetView.distance <= 1.0f) {
-            _camera.targetView.distance *= 0.9f;
-        } else {
-            _camera.targetView.distance = glm::round(_camera.targetView.distance - 1.0f);
-        }
+        _zoom(_camera, true);
         return true;
     case SDLK_g:
     case SDLK_t:

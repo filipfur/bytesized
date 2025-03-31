@@ -19,8 +19,15 @@ struct Camera {
     const glm::mat4 &view();
     const glm::vec3 &orientation();
 
+    void yawFromDirection(const glm::vec3 &from, const glm::vec3 &to);
+    void yawFromDirection(const glm::vec3 &dir);
+
     CameraView currentView;
     CameraView targetView;
+
+    glm::vec2 rotationalSpeed{10.0f, 10.0f};
+    float moveSpeed{10.0f};
+    float zoomSpeed{10.0f};
 
   private:
     glm::vec3 _orientation{1.0f, 0.0f, 0.0f};

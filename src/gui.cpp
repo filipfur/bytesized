@@ -25,10 +25,9 @@ void GUI::create(bdf::Font *font_, float width_, float height_, float em_, Optio
     projection = glm::ortho(0.0f, width, 0.0f, height, -1.0f, 1.0f);
     view = glm::mat4{1.0f};
     if (options & TITLE) {
-        titleText = gpu::createText(*font, "untitled*", true);
-        titleText->node->material(0)->color = Color::black;
-        titleText->node->translation = {width * 0.5f, height - 16.0f - font->ph * em, 0.0f};
-        titleText->node->scale = {em, em, em};
+        auto &titleFrame = frames[FRAME_TITLE];
+        titleFrame.createText(*font, width - 192.0f, font->ph * 0.5f * em, em, "untitled*", false,
+                              Color::black);
     }
     if (options & COMMAND_LINE) {
         auto &consoleFrame = frames[FRAME_CONSOLE];
@@ -88,10 +87,10 @@ void GUI::render(gpu::ShaderProgram *frameProgram, gpu::ShaderProgram *textProgr
 }
 
 gpu::Text *GUI::setTitleText(const char *value) {
-    if (titleText) {
-        titleText->setText(value, true);
+    if (frames[FRAME_TITLE]) {
+        frames[FRAME_TITLE].text->setText(value, true);
     }
-    return titleText;
+    return frames[FRAME_TITLE].text;
 }
 
 gpu::Text *GUI::setConsoleText(const char *value) {
@@ -139,6 +138,6 @@ void GUI::setNodeInfo(const char *scene, const char *name, uint32_t id, const ch
 void GUI::showNodeInfo(bool visible) {
     for (size_t i{0}; i < NODE_INFO_COUNT; ++i) {
         nodeInfoRows[i]->node->hidden = !visible;
-        frames[FRAME_FPS].setHidden(!visible);
+        frames[FRAME_NODE_INFO].setHidden(!visible);
     }
 }

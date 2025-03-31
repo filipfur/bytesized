@@ -73,7 +73,11 @@ struct ClickNPick : public window::IMouseListener, public window::IMouseMotionLi
         assert(false); // not registered
     }
 
-    void clear() { std::memset(nodes, 0, sizeof(nodes)); }
+    void clear() {
+        for (size_t i{0}; i < CLICKNPICK_COUNT; ++i) {
+            nodes[i] = nullptr;
+        }
+    }
 
     void update(const glm::mat4 &view) {
         fbo->bind();

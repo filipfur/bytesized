@@ -44,11 +44,9 @@ bool geom::Plane::_intersects(AABB &other) {
     float r = glm::dot(other.extents(), glm::abs(this->normal));
     return glm::dot(this->normal, other.origin()) - this->distance <= r;
 }
-bool geom::Plane::_intersects(OBB &other) { return false; }
+bool geom::Plane::_intersects(OBB &) { return false; }
 
-std::pair<glm::vec3, float> geom::Plane::_separation(Plane &other) {
-    return {{0.0f, 0.0f, 0.0f}, 0.0f};
-}
+std::pair<glm::vec3, float> geom::Plane::_separation(Plane &) { return {{0.0f, 0.0f, 0.0f}, 0.0f}; }
 std::pair<glm::vec3, float> geom::Plane::_separation(Sphere &other) {
     return {this->normal, other.radii() - glm::dot(other.origin() - origin(), this->normal)};
 }
@@ -56,6 +54,4 @@ std::pair<glm::vec3, float> geom::Plane::_separation(AABB &other) {
     float r = glm::dot(other.extents(), glm::abs(this->normal));
     return {this->normal, r - (glm::dot(this->normal, other.origin()) - this->distance)};
 }
-std::pair<glm::vec3, float> geom::Plane::_separation(OBB &other) {
-    return {{0.0f, 0.0f, 0.0f}, 0.0f};
-}
+std::pair<glm::vec3, float> geom::Plane::_separation(OBB &) { return {{0.0f, 0.0f, 0.0f}, 0.0f}; }

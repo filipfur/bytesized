@@ -102,6 +102,26 @@ inline static bool isNear(const glm::vec3 &a, const glm::vec3 &b) {
     return isNear(a.x, b.x) && isNear(a.y, b.y) && isNear(a.z, b.z);
 }
 
+inline static glm::vec3 xz(const glm::vec3 &xyz) { return {xyz.x, 0.0f, xyz.z}; }
+inline static float xz_distance(const glm::vec3 &a, const glm::vec3 &b) {
+    return glm::distance(xz(a), xz(b));
+}
+
+inline static float normalizedAngle(float deg) {
+    while (deg > 180.0f) {
+        deg -= 360.0f;
+    }
+    while (deg < -180.0f) {
+        deg += 360.0f;
+    }
+    return deg;
+}
+
+inline static float angleDistance(float deg_a, float deg_b) {
+    float diff = glm::mod(deg_b - deg_a + 180.0f, 360.0f) - 180.0f;
+    return diff < -180 ? diff + 360 : diff;
+}
+
 inline static std::pair<glm::vec3, glm::vec3> extentsCenter(const glm::vec3 min,
                                                             const glm::vec3 max) {
     const glm::vec3 e = (max - min) * 0.5f;

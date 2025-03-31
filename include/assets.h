@@ -1,6 +1,5 @@
 #pragma once
 
-#include "animation.h"
 #include "gpu.h"
 #include "library.h"
 #include <array>
@@ -20,11 +19,11 @@ struct Texture {
 struct Collection {
     Collection();
     Collection(const library::Collection &collection);
-    animation::Animation *animationByName(const char *name);
+    gpu::Animation *animationByName(const char *name);
     const std::string &name() const;
 
     gpu::Scene *scene;
     std::vector<Texture> texture;
-    std::vector<animation::Animation *> animations;
+    std::vector<gpu::Animation *> animations;
 };
 } // namespace assets

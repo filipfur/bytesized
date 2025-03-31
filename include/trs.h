@@ -60,6 +60,7 @@ struct TRS {
     Attribute<glm::vec3> euler;
 
     glm::mat4 &model();
+    glm::vec3 position();
 
     TRS *parent();
     void setParent(TRS *parent);
@@ -70,6 +71,7 @@ struct TRS {
     }
 
     const glm::vec3 &t() { return translation.data(); }
+    glm::vec3 xz() { return glm::vec3{translation.x, 0.0f, translation.z}; }
 
     const glm::quat &r() { return rotation.data(); }
 

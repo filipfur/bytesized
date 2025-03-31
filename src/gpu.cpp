@@ -27,6 +27,8 @@
 #define GPU__SHADERPROGRAM_COUNT 10
 #define GPU__TEXT_COUNT 10
 #define GPU__FRAMEBUFFER_COUNT 10
+#define GPU__ANIMATION__COUNT 50
+#define GPU___PLAYBACK_COUNT 10
 
 static recycler<uint32_t, GPU__VERTEXARRAY_COUNT> VAOS = {};
 static recycler<uint32_t, GPU__VERTEXBUFFER_COUNT> VBOS = {};
@@ -42,9 +44,13 @@ static recycler<gpu::Shader, GPU__SHADER_COUNT> SHADERS = {};
 static recycler<gpu::ShaderProgram, GPU__SHADERPROGRAM_COUNT> SHADERPROGRAMS = {};
 static recycler<gpu::Text, GPU__TEXT_COUNT> TEXTS = {};
 static recycler<gpu::Framebuffer, GPU__FRAMEBUFFER_COUNT> FRAMEBUFFERS = {};
+static recycler<gpu::Animation, GPU__ANIMATION__COUNT> ANIMATIONS = {};
+static recycler<gpu::Playback, GPU___PLAYBACK_COUNT> PLAYBACKS = {};
+bool gpu::SETTINGS_LERP{true};
 
 static gpu::Material *_builtinMaterials[gpu::MATERIAL_COUNT];
 static gpu::Material *_overrideMaterial{nullptr};
+static gpu::Texture *_blankDiffuse{nullptr};
 
 template <std::size_t W, std::size_t H, std::size_t C> struct StaticTexture {
     constexpr StaticTexture(glm::vec4 (*func)(uint32_t x, uint32_t y)) : buf{} {
@@ -75,6 +81,9 @@ void gpu::allocate() {
               sizeof(SHADERS) + sizeof(SHADERPROGRAMS)) *
                  1e-3f);
 
+    uint8_t onePixel[]{0xFF, 0xFF, 0xFF};
+    _blankDiffuse = createTexture(onePixel, 1, 1, ChannelSetting::RGB, GL_UNSIGNED_BYTE);
+
     _builtinMaterials[BuiltinMaterial::CHECKERS] = MATERIALS.acquire();
     _builtinMaterials[BuiltinMaterial::CHECKERS]->color = 0xFF00FF;
     constexpr StaticTexture<8, 8, 3> checkers_tex{[](uint32_t x, uint32_t y) {
@@ -103,9 +112,7 @@ void gpu::allocate() {
 
     _builtinMaterials[BuiltinMaterial::WHITE] = MATERIALS.acquire();
     _builtinMaterials[BuiltinMaterial::WHITE]->color = 0xFFFFFF;
-    uint8_t onePixel[]{0xFF, 0xFF, 0xFF};
-    _builtinMaterials[BuiltinMaterial::WHITE]->textures.emplace(
-        GL_TEXTURE0, createTexture(onePixel, 1, 1, ChannelSetting::RGB, GL_UNSIGNED_BYTE));
+    _builtinMaterials[BuiltinMaterial::WHITE]->textures.emplace(GL_TEXTURE0, _blankDiffuse);
 }
 
 void gpu::dispose() {
@@ -225,8 +232,8 @@ gpu::Texture *gpu::createTexture(const uint8_t *data, uint32_t width, uint32_t h
 
 gpu::Texture *gpu::createTextureFromFile(const char *path, bool flip) {
     int iw, ih, ic;
-    const uint8_t *idata = stbi_load(path, &iw, &ih, &ic, 0);
     stbi_set_flip_vertically_on_load(flip);
+    const uint8_t *idata = stbi_load(path, &iw, &ih, &ic, 0);
     return createTexture(idata, iw, ih, static_cast<ChannelSetting>(ic), GL_UNSIGNED_BYTE);
 }
 
@@ -296,6 +303,13 @@ void gpu::freeText(gpu::Text *text) {
 }
 
 gpu::Material *gpu::createMaterial() { return MATERIALS.acquire(); }
+
+gpu::Material *gpu::createMaterial(const Color &color) {
+    gpu::Material *mat = MATERIALS.acquire();
+    mat->color = color;
+    mat->textures.emplace(GL_TEXTURE0, _blankDiffuse);
+    return mat;
+}
 
 gpu::Material *gpu::createMaterial(gpu::Texture *texture) {
     gpu::Material *mat = MATERIALS.acquire();
@@ -424,7 +438,9 @@ gpu::Node *gpu::createNode(const gpu::Node &other) {
 gpu::Node *gpu::createNode(const library::Node &libraryNode) {
     Node *node = createNode();
     node->libraryNode = &libraryNode;
-    const_cast<library::Node &>(libraryNode).gpuInstance = (void *)node;
+    if (libraryNode.gpuInstance == nullptr) {
+        const_cast<library::Node &>(libraryNode).gpuInstance = (void *)node;
+    }
     if (libraryNode.mesh) {
         gpu::Mesh *loadedMesh = (gpu::Mesh *)libraryNode.mesh->gpuInstance;
         if (loadedMesh) {
@@ -450,10 +466,6 @@ gpu::Node *gpu::createNode(const library::Node &libraryNode) {
     if (node->skin) {
         for (library::Node *joint : node->skin->librarySkin->joints) {
             node->skin->joints.emplace_back(node->childByName(joint->name.c_str()));
-        }
-        const GLfloat *fp = (const GLfloat *)node->skin->librarySkin->inverseBindMatrices->data();
-        for (size_t j{0}; j < node->skin->librarySkin->joints.size(); ++j) {
-            node->skin->invBindMatrices.push_back(glm::make_mat4(fp + j * 16));
         }
     }
     return node;
@@ -506,9 +518,28 @@ void gpu::freeNode(gpu::Node *node) {
             freeMesh(node->mesh);
         }
     }
+    node->entity = nullptr;
+    node->hidden = false;
+    node->translation = {0.0f, 0.0f, 0.0f};
+    node->rotation = {1.0f, 0.0f, 0.0f, 0.0f};
+    node->euler = {0.0f, 0.0f, 0.0f};
+    node->scale = {1.0f, 1.0f, 1.0f};
+    node->wireframe = false;
     node->mesh = nullptr;
+    node->setParent(nullptr);
+    if (node->libraryNode->gpuInstance == node) {
+        const_cast<library::Node *>(node->libraryNode)->gpuInstance = nullptr;
+    }
     node->libraryNode = nullptr;
     if (node->skin) {
+        for (auto *anim : node->skin->animations) {
+            gpu::freeAnimation(anim);
+        }
+        node->skin->playback->animation = nullptr;
+        gpu::freePlayback(node->skin->playback);
+        node->skin->animations.clear();
+        node->skin->playback = nullptr;
+
         node->skin->joints.clear();
         node->skin->librarySkin = nullptr;
         SKINS.free(node->skin);
@@ -517,10 +548,11 @@ void gpu::freeNode(gpu::Node *node) {
     for (Node *child : node->children) {
         freeNode(child);
     }
-    const_cast<library::Node *>(node->libraryNode)->gpuInstance = nullptr;
     node->children.clear();
     NODES.free(node);
 }
+
+size_t gpu::nodeCount() { return NODES.count(); }
 
 gpu::Scene *gpu::createScene() {
     gpu::Scene *scene = SCENES.acquire();
@@ -613,9 +645,10 @@ static gpu::SkinBlock skinBlock;
 gpu::SkinBlock &gpu::getSkinBlock() { return skinBlock; }
 
 static gpu::LightBlock lightBlock;
-void gpu::LightBlock_setLightColor(const Color &high, const Color &low) {
-    lightBlock.lightHigh = high.vec3();
-    lightBlock.lightLow = low.vec3();
+void gpu::LightBlock_setLightColor(const Color &high, const Color &low, const Color &ambient) {
+    lightBlock.lightHigh = high.vec4();
+    lightBlock.lightLow = low.vec4();
+    lightBlock.ambient = ambient.vec4();
     auto *ubo = builtinUBO(gpu::UBO_LIGHT);
     ubo->bind();
     ubo->bufferData(sizeof(LightBlock), &lightBlock);
@@ -636,7 +669,7 @@ static void _updateBonesArray(gpu::Node *node) {
     const glm::mat4 globalWorldInverse = glm::inverse(node->model());
     for (size_t j{0}; j < node->skin->joints.size() && j < gpu::MAX_BONES; ++j) {
         skinBlock.bones[j] = globalWorldInverse * node->skin->joints.at(j)->model() *
-                             node->skin->invBindMatrices.at(j);
+                             node->skin->librarySkin->inverseBindMatrices.at(j);
     }
 }
 
@@ -893,4 +926,239 @@ void gpu::renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector) {
     }
     glBindVertexArray(*vao);
     glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_SHORT, NULL);
+}
+
+gpu::Animation *gpu::Skin::findAnimation(const char *name) {
+    for (auto anim : animations) {
+        if (anim->name.compare(name) == 0) {
+            return anim;
+        }
+    }
+    return nullptr;
+}
+
+gpu::Playback *gpu::Skin::playAnimation(const char *name) {
+    gpu::Animation *anim = findAnimation(name);
+    if (anim != playback->animation) {
+        playback->animation = anim;
+        playback->time = playback->animation->startTime;
+        for (auto &channel : anim->channels) {
+            gpu::Channel *ch = &channel.second.at(gpu::Animation::CH_TRANSLATION);
+            ch->current = ch->frames.begin();
+            ch = &channel.second.at(gpu::Animation::CH_ROTATION);
+            ch->current = ch->frames.begin();
+            ch = &channel.second.at(gpu::Animation::CH_SCALE);
+            ch->current = ch->frames.begin();
+        }
+    }
+    return playback;
+}
+
+gpu::Animation *gpu::createAnimation(const library::Animation &anim, gpu::Node *retargetNode) {
+    auto rval = ANIMATIONS.acquire();
+    rval->libraryAnimation = &anim;
+    rval->startTime = FLT_MAX;
+    rval->endTime = -FLT_MAX;
+    rval->looping = true;
+    for (size_t j{0}; j < 96; ++j) {
+        const auto &channel = anim.channels[j];
+        if (channel.type) {
+            float *fp = (float *)channel.sampler->input->data();
+            glm::vec3 *v3p = (glm::vec3 *)channel.sampler->output->data();
+            glm::vec4 *v4p = (glm::vec4 *)channel.sampler->output->data();
+            gpu::Node *targetNode = (gpu::Node *)channel.targetNode->gpuInstance;
+            if (retargetNode) {
+                targetNode = retargetNode->childByName(channel.targetNode->name.c_str());
+                assert(targetNode);
+            }
+            rval->name = anim.name;
+            switch (channel.type) {
+            case library::Channel::TRANSLATION:
+                rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.resize(
+                    channel.sampler->input->count);
+                rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].current =
+                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.begin();
+                for (size_t k{0}; k < channel.sampler->input->count; ++k) {
+                    rval->startTime = std::min(rval->startTime, fp[k]);
+                    rval->endTime = std::max(rval->endTime, fp[k]);
+                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).time =
+                        fp[k];
+                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).v3.x =
+                        v3p[k].x;
+                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).v3.y =
+                        v3p[k].y;
+                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).v3.z =
+                        v3p[k].z;
+                }
+                break;
+            case library::Channel::ROTATION:
+                rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.resize(
+                    channel.sampler->input->count);
+                rval->channels[targetNode][gpu::Animation::CH_ROTATION].current =
+                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.begin();
+                for (size_t k{0}; k < channel.sampler->input->count; ++k) {
+                    rval->startTime = std::min(rval->startTime, fp[k]);
+                    rval->endTime = std::max(rval->endTime, fp[k]);
+                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).time =
+                        fp[k];
+                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.x =
+                        v4p[k].x;
+                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.y =
+                        v4p[k].y;
+                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.z =
+                        v4p[k].z;
+                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.w =
+                        v4p[k].w;
+                }
+                break;
+            case library::Channel::SCALE:
+                rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.resize(
+                    channel.sampler->input->count);
+                rval->channels[targetNode][gpu::Animation::CH_SCALE].current =
+                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.begin();
+                for (size_t k{0}; k < channel.sampler->input->count; ++k) {
+                    rval->startTime = std::min(rval->startTime, fp[k]);
+                    rval->endTime = std::max(rval->endTime, fp[k]);
+                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).time = fp[k];
+                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).v3.x =
+                        v3p[k].x;
+                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).v3.y =
+                        v3p[k].y;
+                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).v3.z =
+                        v3p[k].z;
+                }
+                break;
+            case library::Channel::NONE:
+                LOG_ERROR("Unknown animation channel");
+                break;
+            }
+        }
+    }
+    return rval;
+}
+
+void gpu::freeAnimation(Animation *animation) {
+    animation->startTime = 0;
+    animation->endTime = 0;
+    animation->name = {};
+    animation->channels.clear();
+    animation->libraryAnimation = nullptr;
+    animation->looping = true;
+    ANIMATIONS.free(animation);
+}
+
+void gpu::Animation::start() {
+    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
+        if (PLAYBACKS[i].animation == this) {
+            return;
+        }
+    }
+    auto playback = PLAYBACKS.acquire();
+    playback->animation = this;
+    playback->paused = false;
+    playback->time = 0.0f;
+}
+
+void gpu::Animation::stop() {
+    gpu::Playback *playback{nullptr};
+    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
+        if (PLAYBACKS[i].animation == this) {
+            playback = PLAYBACKS.data() + 1;
+            break;
+        }
+    }
+    if (playback) {
+        playback->animation = nullptr;
+        PLAYBACKS.free(playback);
+    }
+}
+
+gpu::Playback *gpu::createPlayback(gpu::Animation *animation) {
+    gpu::Playback *handle = PLAYBACKS.acquire();
+    handle->animation = animation;
+    return handle;
+};
+
+void gpu::freePlayback(gpu::Playback *playback) {
+    playback->animation = nullptr;
+    playback->paused = false;
+    playback->time = 0.0f;
+    PLAYBACKS.free(playback);
+};
+
+static inline gpu::Frame *getFrame(gpu::Channel &channel, float time);
+
+void gpu::animate(float dt) {
+    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
+        auto &playback = PLAYBACKS[i];
+        if (auto anim = playback.animation) {
+            if (playback.paused) {
+                continue;
+            }
+            for (auto &channel : anim->channels) {
+                gpu::Node *node = channel.first;
+                if (auto tframe = getFrame(channel.second.at(gpu::Animation::CH_TRANSLATION),
+                                           playback.time)) {
+                    if (SETTINGS_LERP) {
+                        node->translation =
+                            glm::mix(node->translation.data(), tframe->v3, 16.0f * dt);
+                    } else {
+                        node->translation = tframe->v3;
+                    }
+                }
+                if (auto rframe =
+                        getFrame(channel.second.at(gpu::Animation::CH_ROTATION), playback.time)) {
+                    if (SETTINGS_LERP) {
+                        node->rotation = glm::slerp(node->rotation.data(), rframe->q, 16.0f * dt);
+                    } else {
+                        node->rotation = rframe->q;
+                    }
+                }
+                if (auto sframe =
+                        getFrame(channel.second.at(gpu::Animation::CH_SCALE), playback.time)) {
+                    if (SETTINGS_LERP) {
+                        node->scale = glm::mix(node->scale.data(), sframe->v3, 16.0f * dt);
+                    } else {
+                        node->scale = sframe->v3;
+                    }
+                }
+            }
+            playback.time += dt;
+            if (playback.time > playback.animation->endTime) {
+                if (playback.animation->looping) {
+                    playback.time = playback.animation->startTime +
+                                    (playback.time - playback.animation->endTime);
+                } else {
+                    playback.time = std::min(playback.time, playback.animation->endTime);
+                }
+            }
+        }
+    }
+}
+
+static inline gpu::Frame *getFrame(gpu::Channel &channel, float time) {
+    if (channel.current == channel.frames.end()) {
+        if (channel.frames.empty()) {
+            return nullptr;
+        }
+        channel.current = channel.frames.begin();
+    }
+    while (channel.current->time < time) {
+        if (channel.current == (channel.frames.end() - 1)) {
+            break;
+        }
+        ++channel.current;
+    }
+    if (channel.current == (channel.frames.end() - 1)) {
+        float d1 = time - channel.frames.begin()->time;
+        float d2 = time - channel.current->time;
+        // check if we wrapped
+        if (glm::abs(d1) < glm::abs(d2)) {
+            channel.current = channel.frames.begin();
+        }
+    }
+    if (channel.current != channel.frames.end()) {
+        return &(*channel.current);
+    }
+    return nullptr;
 }

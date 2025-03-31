@@ -1,5 +1,6 @@
 #include "library.h"
 
+#include "glm/gtc/type_ptr.hpp"
 #include "json.hpp"
 #include "logging.h"
 #include <list>
@@ -469,7 +470,7 @@ struct GLBJsonStream : public JsonStream {
             if (parent == "joints") {
                 cSkin->joints.emplace_back(sNode + val);
             } else if (key == "inverseBindMatrices") {
-                cSkin->inverseBindMatrices = sAccessor + val;
+                cSkin->ibmData = sAccessor + val;
             }
         case PARSE_ANIM_CHANNELS:
             if (key == "sampler") {
@@ -578,12 +579,7 @@ inline static void _parseChunk(glb_chunk *chunk, bool copyBuffers) {
         js.sImage = IMAGES + ACTIVE_IMAGES;
         js.sTexture = TEXTURES + ACTIVE_TEXTURES;
         js.sMaterial = MATERIALS + ACTIVE_MATERIALS;
-        if (cCollection == nullptr) {
-            cCollection = COLLECTIONS;
-        } else {
-            ++cCollection;
-        }
-        ++ACTIVE_COLLECTIONS;
+        cCollection = COLLECTIONS + ACTIVE_COLLECTIONS++;
         cCollection->scene = js.sScene;
         cCollection->animations = js.sAnimation;
         cCollection->nodes = js.sNode;
@@ -621,6 +617,15 @@ library::Collection *library::loadGLB(const unsigned char *glb, bool copyBuffers
         i -= chunk->length + sizeof(glb_chunk);
         chunk = (glb_chunk *)((unsigned char *)chunk + chunk->length + sizeof(glb_chunk));
     }
+    for (size_t k{0}; k < cCollection->nodes_count; ++k) {
+        Node &node = cCollection->nodes[k];
+        if (node.skin) {
+            const float *fp = (const float *)node.skin->ibmData->data();
+            for (size_t j{0}; j < node.skin->joints.size(); ++j) {
+                node.skin->inverseBindMatrices.push_back(glm::make_mat4(fp + j * 16));
+            }
+        }
+    }
     return cCollection;
 }
 
@@ -629,6 +634,18 @@ library::Collection *library::createCollection(const char *name) {
     collection->scene = SCENES + ACTIVE_SCENES++;
     collection->scene->name = name;
     return collection;
+}
+
+library::Collection *library::builtinCollection() { return COLLECTIONS; }
+
+bool library::isBuiltin(const library::Mesh *mesh) {
+    auto *collection = builtinCollection();
+    for (size_t i{0}; i < collection->meshes_count; ++i) {
+        if ((collection->meshes + i) == mesh) {
+            return true;
+        }
+    }
+    return false;
 }
 
 library::Node *library::createNode() {

@@ -9,6 +9,7 @@ void create();
 struct Sky {
     Color high;
     Color low;
+    Color ambient;
     float clouds;
 };
 void setSky(const Sky &sky);
