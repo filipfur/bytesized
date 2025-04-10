@@ -4,7 +4,7 @@
 #include "component.h"
 #include "dexterity.h"
 #include "ecs.h"
-#include "embed.h"
+#include "embed/boxxy_bdf.hpp"
 #include "geom_primitive.h"
 #include "gpu.h"
 #include "gpu_primitive.h"
@@ -179,7 +179,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
 
     auto builtinGeoms = _collections.emplace_back(*gpu::createBuiltinPrimitives());
 
-    bdf::Font *font = bdf::createFont(__bdf__boxxy, __bdf__boxxy_len);
+    bdf::Font *font = bdf::createFont((const char *)_embed_boxxy_bdf, sizeof(_embed_boxxy_bdf));
     gui.create(font, _windowWidth, _windowHeight, 2.0f, GUI::EVERYTHING);
 
     const glm::vec4 defaultColor = Color::green.vec4();

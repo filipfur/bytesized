@@ -53,7 +53,7 @@ void gpu::Shader_createProgram(ShaderProgram &prog) {
 
 gpu::Shader *gpu::builtinShader(gpu::BuiltinShader builtinShader) {
     static gpu::Shader *shaders[] = {
-#define __SHADER(label, str, type) gpu::createShader(type, str),
+#define __SHADER(label, str, type) gpu::createShader(type, (const char *)str),
         __BUILTINSHADERS
 #undef __SHADER
         nullptr};

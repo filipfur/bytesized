@@ -1,8 +1,9 @@
 #include "gui.h"
-#include "embed.h"
+#include "embed/console_png.hpp"
+#include "embed/tframe_png.hpp"
+#include "embed/ui_png.hpp"
 #include "gpu_primitive.h"
 #include "systime.h"
-
 #include <glm/gtc/quaternion.hpp>
 
 /*static gpu::Node *_createFrame(float width, float height, const glm::vec2 &frameDim,
@@ -31,9 +32,9 @@ void GUI::create(bdf::Font *font_, float width_, float height_, float em_, Optio
     }
     if (options & COMMAND_LINE) {
         auto &consoleFrame = frames[FRAME_CONSOLE];
-        consoleFrame.createPanel(
-            512, 48,
-            gpu::createTextureFromMem((uint8_t *)__png__console, __png__console_len, true));
+        consoleFrame.createPanel(512, 48,
+                                 gpu::createTextureFromMem((uint8_t *)_embed_console_png,
+                                                           sizeof(_embed_console_png), true));
         consoleFrame.setPosition(6.0f, 2.0f);
         consoleFrame.setHidden(true);
         auto &textFrame = consoleFrame.children.emplace_back();
@@ -41,8 +42,9 @@ void GUI::create(bdf::Font *font_, float width_, float height_, float em_, Optio
     }
     if (options & FPS) {
         auto &fpsFrame = frames[FRAME_FPS];
-        fpsFrame.createPanel(
-            192, 48, gpu::createTextureFromMem((uint8_t *)__png__tframe, __png__tframe_len, true));
+        fpsFrame.createPanel(192, 48,
+                             gpu::createTextureFromMem((uint8_t *)_embed_tframe_png,
+                                                       sizeof(_embed_tframe_png), true));
         fpsFrame.setPosition(6.0f, height - fpsFrame.height() - 10.0f);
         auto &textFrame = fpsFrame.children.emplace_back();
         textFrame.createText(*font, 24.0f, height - 16.0f - font->ph * em, em, "fps: N/A", false,
@@ -60,7 +62,7 @@ void GUI::create(bdf::Font *font_, float width_, float height_, float em_, Optio
         auto &nodeInfoFrame = frames[FRAME_NODE_INFO];
         nodeInfoFrame.createPanel(
             256 * 1.33f, 128 * 1.33f,
-            gpu::createTextureFromMem((uint8_t *)__png__ui, __png__ui_len, true));
+            gpu::createTextureFromMem((uint8_t *)_embed_ui_png, sizeof(_embed_ui_png), true));
         nodeInfoFrame.setPosition(width - nodeInfoFrame.width() - 36.0f,
                                   height - nodeInfoFrame.height() - 6.0f);
         nodeInfoFrame.setHidden(true);

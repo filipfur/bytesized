@@ -20,6 +20,26 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(SDL2 REQUIRED)
 find_package(GLEW REQUIRED)
 
+add_subdirectory(embed)
+set(assets
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/anim.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/anim.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/object.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/object.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/screen.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/text.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/text.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/texture.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/ui.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/billboard.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/console.png
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/tframe.png
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/ui.png
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/boxxy.bdf
+)
+embed_assets("${assets}" assets_headers)
+add_custom_target(bytesized_assets DEPENDS ${assets_headers})
+
 add_library(bytesized
     stb/stb_image.cpp
     src/library.cpp
@@ -59,16 +79,15 @@ add_library(bytesized
     src/playerinput.cpp
     src/runtime.cpp
 )
-
-add_subdirectory(embed)
+add_dependencies(bytesized bytesized_assets)
 
 include(CTest)
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
-target_include_directories(bytesized PUBLIC glm gcem/include stb ${SDL2_INCLUDE_DIR} include)
-set(LIBS ${SDL2_LIBRARY} GLEW::GLEW bytesized_embed)
+target_include_directories(bytesized PUBLIC glm gcem/include stb ${SDL2_INCLUDE_DIR} include ${CMAKE_BINARY_DIR}/gen)
+set(LIBS ${SDL2_LIBRARY} GLEW::GLEW)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set(LIBS ${LIBS} m GL)
 endif()
