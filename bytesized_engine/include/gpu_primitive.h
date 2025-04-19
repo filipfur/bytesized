@@ -281,4 +281,7 @@ library::Collection *createBuiltinPrimitives();
 enum BuiltinPrimitives { SPRITE, BILLBOARD, PLANE, CUBE, SPHERE, CYLINDER, CONE, PRIMITIVE_COUNT };
 gpu::Primitive *builtinPrimitives(BuiltinPrimitives builtinPrimitives);
 
+void renderScreen();
+void renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector);
+
 } // namespace gpu

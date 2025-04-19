@@ -3,11 +3,9 @@
 #define GLM_ENABLE_EXPERIMENTAL
 
 #include "debug.hpp"
-#include "gpu_primitive.h"
 #include "logging.h"
 #include "opengl.h"
 #include "primer.h"
-#include "shader.h"
 #include "stb_image.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
@@ -46,7 +44,6 @@ static recycler<gpu::Text, GPU__TEXT_COUNT> TEXTS = {};
 static recycler<gpu::Framebuffer, GPU__FRAMEBUFFER_COUNT> FRAMEBUFFERS = {};
 static recycler<gpu::Animation, GPU__ANIMATION__COUNT> ANIMATIONS = {};
 static recycler<gpu::Playback, GPU___PLAYBACK_COUNT> PLAYBACKS = {};
-bool gpu::SETTINGS_LERP{true};
 
 static gpu::Material *_builtinMaterials[gpu::MATERIAL_COUNT];
 static gpu::Material *_overrideMaterial{nullptr};
@@ -196,6 +193,9 @@ void gpu::Framebuffer::checkStatus() {
 }
 void gpu::Framebuffer::unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
 
+uint32_t *gpu::createVAO() { return VAOS.acquire(); }
+uint32_t *gpu::createVBO() { return VBOS.acquire(); }
+
 gpu::Mesh *gpu::createMesh() {
     gpu::Mesh *mesh = MESHES.acquire();
     return mesh;
@@ -258,6 +258,54 @@ void gpu::freeFramebuffer(gpu::Framebuffer *fbo) {
     glDeleteFramebuffers(1, &fbo->id);
     fbo->textures.clear();
     FRAMEBUFFERS.free(fbo);
+}
+
+static const int _charbuf_len = 1024;
+static GLchar _charbuf[_charbuf_len] = {};
+
+void gpu::ShaderProgram::use() { glUseProgram(id); }
+
+gpu::Uniform *gpu::ShaderProgram::uniform(const char *key) {
+    auto it = uniforms.find(key);
+    if (it == uniforms.end()) {
+        return nullptr;
+    }
+    return &it->second;
+}
+
+bool gpu::Shader_compile(const gpu::Shader &shader, const char *src) {
+    glShaderSource(shader.id, 1, &src, nullptr);
+    glCompileShader(shader.id);
+    GLint status{0};
+    GLint length{0};
+    glGetShaderiv(shader.id, GL_COMPILE_STATUS, &status);
+    if (status == GL_FALSE) {
+        glGetShaderiv(shader.id, GL_INFO_LOG_LENGTH, &length);
+        GLint n = length < _charbuf_len ? length : _charbuf_len;
+        glGetShaderInfoLog(shader.id, length, &n, _charbuf);
+        printf("%.*s\n", n, _charbuf);
+        return false;
+    }
+    return true;
+}
+
+void gpu::Shader_createProgram(ShaderProgram &prog) {
+    prog.id = glCreateProgram();
+    glAttachShader(prog.id, prog.vertex->id);
+    glAttachShader(prog.id, prog.fragment->id);
+    glLinkProgram(prog.id);
+    GLint res = GL_FALSE;
+    glGetProgramiv(prog.id, GL_LINK_STATUS, &res);
+    if (!res) {
+        glGetProgramInfoLog(prog.id, _charbuf_len, NULL, _charbuf);
+        printf("%s\n", _charbuf);
+        return;
+    }
+    prog.use();
+    for (auto it = prog.uniforms.begin(); it != prog.uniforms.end(); ++it) {
+        it->second.location = glGetUniformLocation(prog.id, it->first.c_str());
+        it->second.update();
+    }
 }
 
 gpu::Texture *gpu::createTexture(const uint8_t *data, uint32_t width, uint32_t height,
@@ -900,71 +948,6 @@ void gpu::freeShaderProgram(ShaderProgram *shaderProgram) {
     prim->count = index_count;
 #endif
 
-void gpu::renderScreen() {
-    static uint32_t *vao{nullptr};
-    static uint32_t *vbo{nullptr};
-    static uint32_t *ebo{nullptr};
-    if (vao == nullptr) {
-        vao = VAOS.acquire();
-        glBindVertexArray(*vao);
-        vbo = VBOS.acquire();
-        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::screen_vertices), gpu::screen_vertices,
-                     GL_STATIC_DRAW);
-        ebo = VBOS.acquire();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::screen_indices), gpu::screen_indices,
-                     GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
-    }
-    glBindVertexArray(*vao);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
-}
-
-inline static void _setupAttribPosNorUV_Interleaved() {
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
-    glBindVertexArray(0);
-}
-
-void gpu::renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector) {
-    if (vector.hidden) {
-        return;
-    }
-    static uint32_t *vao{nullptr};
-    static uint32_t *vbo{nullptr};
-    static uint32_t *ebo{nullptr};
-    shaderProgram->use();
-    const glm::mat4 model =
-        glm::scale(glm::translate(glm::mat4(1.0f), vector.O) *
-                       glm::mat4(glm::mat3_cast(primer::quaternionFromDirection(vector.Ray))),
-                   glm::vec3{1.0f, glm::length(vector.Ray), 1.0f});
-    glActiveTexture(GL_TEXTURE0);
-    builtinMaterial(gpu::WHITE)->textures.at(GL_TEXTURE0)->bind();
-    shaderProgram->uniforms.at("u_model") << model;
-    shaderProgram->uniforms.at("u_color") << vector.color.vec4();
-    if (vao == nullptr) {
-        vao = VAOS.acquire();
-        glBindVertexArray(*vao);
-        vbo = VBOS.acquire();
-        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::vector_vertices), gpu::vector_vertices,
-                     GL_STATIC_DRAW);
-        ebo = VBOS.acquire();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::vector_indices), gpu::vector_indices,
-                     GL_STATIC_DRAW);
-        _setupAttribPosNorUV_Interleaved();
-    }
-    glBindVertexArray(*vao);
-    glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_SHORT, NULL);
-}
-
 gpu::Animation *gpu::Skin::findAnimation(const char *name) {
     for (auto anim : animations) {
         if (anim->name.compare(name) == 0) {
@@ -1125,6 +1108,7 @@ void gpu::freePlayback(gpu::Playback *playback) {
 
 static inline gpu::Frame *getFrame(gpu::Channel &channel, float time);
 
+static constexpr bool _lerpBetweenKeyFrames = true;
 void gpu::animate(float dt) {
     for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
         auto &playback = PLAYBACKS[i];
@@ -1136,7 +1120,7 @@ void gpu::animate(float dt) {
                 gpu::Node *node = channel.first;
                 if (auto tframe = getFrame(channel.second.at(gpu::Animation::CH_TRANSLATION),
                                            playback.time)) {
-                    if (SETTINGS_LERP) {
+                    if (_lerpBetweenKeyFrames) {
                         node->translation =
                             glm::mix(node->translation.data(), tframe->v3, 16.0f * dt);
                     } else {
@@ -1145,7 +1129,7 @@ void gpu::animate(float dt) {
                 }
                 if (auto rframe =
                         getFrame(channel.second.at(gpu::Animation::CH_ROTATION), playback.time)) {
-                    if (SETTINGS_LERP) {
+                    if (_lerpBetweenKeyFrames) {
                         node->rotation = glm::slerp(node->rotation.data(), rframe->q, 16.0f * dt);
                     } else {
                         node->rotation = rframe->q;
@@ -1153,7 +1137,7 @@ void gpu::animate(float dt) {
                 }
                 if (auto sframe =
                         getFrame(channel.second.at(gpu::Animation::CH_SCALE), playback.time)) {
-                    if (SETTINGS_LERP) {
+                    if (_lerpBetweenKeyFrames) {
                         node->scale = glm::mix(node->scale.data(), sframe->v3, 16.0f * dt);
                     } else {
                         node->scale = sframe->v3;

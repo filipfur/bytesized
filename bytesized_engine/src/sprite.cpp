@@ -1,5 +1,6 @@
 #include "sprite.h"
 #include "gpu_primitive.h"
+#include "gpu_shader.h"
 #include <algorithm>
 
 void SpriteRenderer::create(float width, float height) {

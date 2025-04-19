@@ -12,6 +12,7 @@
 #include "embed/text_vert.hpp"
 #include "embed/texture_frag.hpp"
 #include "embed/ui_vert.hpp"
+#include "gpu.h"
 #include "uniform.h"
 #include <cstdint>
 #include <glm/glm.hpp>
@@ -19,23 +20,6 @@
 #include <unordered_map>
 
 namespace gpu {
-
-struct Shader {
-    uint32_t id;
-};
-
-struct ShaderProgram {
-    uint32_t id;
-    Shader *vertex;
-    Shader *fragment;
-    std::unordered_map<std::string, Uniform> uniforms;
-    Uniform *uniform(const char *key);
-
-    void use();
-};
-
-bool Shader_compile(const gpu::Shader &id, const char *src);
-void Shader_createProgram(ShaderProgram &shaderProgram);
 
 #define __BUILTINSHADERS                                                                           \
     __SHADER(SCREEN_VERT, _embed_screen_vert, GL_VERTEX_SHADER)                                    \

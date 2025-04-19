@@ -1,6 +1,5 @@
 #include "window.h"
 
-#include "console.h"
 #include "opengl.h"
 #include <cassert>
 

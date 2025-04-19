@@ -6,7 +6,6 @@
 #include "library_types.h"
 #include "opengl.h"
 #include "recycler.hpp"
-#include "shader.h"
 #include "texture.h"
 #include "trs.h"
 #include "uniform.h"
@@ -18,6 +17,23 @@
 #include <unordered_set>
 
 namespace gpu {
+
+struct Shader {
+    uint32_t id;
+};
+
+struct ShaderProgram {
+    uint32_t id;
+    Shader *vertex;
+    Shader *fragment;
+    std::unordered_map<std::string, Uniform> uniforms;
+    Uniform *uniform(const char *key);
+
+    void use();
+};
+
+bool Shader_compile(const gpu::Shader &id, const char *src);
+void Shader_createProgram(ShaderProgram &shaderProgram);
 
 struct Material {
     Color color;
@@ -95,8 +111,6 @@ struct Node : TRS {
     Primitive *primitive(size_t primitiveIndex = 0);
     Material *material(size_t primitiveIndex = 0);
 };
-
-extern bool SETTINGS_LERP;
 
 struct Frame {
     float time;
@@ -190,6 +204,9 @@ void dispose();
 
 void setOverrideMaterial(gpu::Material *material);
 
+uint32_t *createVAO();
+uint32_t *createVBO();
+
 Mesh *createMesh();
 Mesh *createMesh(gpu::Primitive *primitive, gpu::Material *material = nullptr);
 Primitive *createPrimitive(const glm::vec3 *positions, const glm::vec3 *normals,
@@ -199,9 +216,6 @@ Primitive *createPrimitive(const VertexObject &vertexObject);
 
 enum BuiltinMaterial { CHECKERS, GRID_TILE, WHITE, COLOR_MAP, MATERIAL_COUNT };
 Material *builtinMaterial(BuiltinMaterial builtinMaterial);
-
-void renderScreen();
-void renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector);
 
 Framebuffer *createFramebuffer();
 void freeFramebuffer(Framebuffer *framebuffer);

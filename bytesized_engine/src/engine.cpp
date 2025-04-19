@@ -8,6 +8,7 @@
 #include "geom_primitive.h"
 #include "gpu.h"
 #include "gpu_primitive.h"
+#include "gpu_shader.h"
 #include "gui.h"
 #include "persist.h"
 #include "playercontroller.h"

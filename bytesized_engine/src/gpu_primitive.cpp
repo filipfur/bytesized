@@ -1,4 +1,5 @@
 #include "gpu_primitive.h"
+#include "primer.h"
 
 constexpr gpu::Sprite sprite;
 constexpr gpu::Billboard billboard;
@@ -7,6 +8,16 @@ constexpr gpu::Cube cube;
 constexpr gpu::Sphere<16, 8> sphere;
 constexpr gpu::Sphere<16, 8> cylinder(gpu::Sphere<16, 8>::OPT_CYLINDER);
 constexpr gpu::Sphere<16, 8> cone(gpu::Sphere<16, 8>::OPT_CONE_A);
+
+inline static void _setupAttribPosNorUV_Interleaved() {
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
+    glBindVertexArray(0);
+}
 
 template <typename T>
 inline static library::Primitive &_populatePrimitive(const T &geometry,
@@ -85,4 +96,59 @@ library::Collection *gpu::createBuiltinPrimitives() {
 
 gpu::Primitive *gpu::builtinPrimitives(BuiltinPrimitives builtinPrimitives) {
     return (gpu::Primitive *)_builtinPrimitives[builtinPrimitives]->gpuInstance;
+}
+
+void gpu::renderScreen() {
+    static uint32_t *vao{nullptr};
+    static uint32_t *vbo{nullptr};
+    static uint32_t *ebo{nullptr};
+    if (vao == nullptr) {
+        vao = createVAO();
+        glBindVertexArray(*vao);
+        vbo = createVBO();
+        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::screen_vertices), gpu::screen_vertices,
+                     GL_STATIC_DRAW);
+        ebo = createVBO();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::screen_indices), gpu::screen_indices,
+                     GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+    }
+    glBindVertexArray(*vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+}
+
+void gpu::renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector) {
+    if (vector.hidden) {
+        return;
+    }
+    static uint32_t *vao{nullptr};
+    static uint32_t *vbo{nullptr};
+    static uint32_t *ebo{nullptr};
+    shaderProgram->use();
+    const glm::mat4 model =
+        glm::scale(glm::translate(glm::mat4(1.0f), vector.O) *
+                       glm::mat4(glm::mat3_cast(primer::quaternionFromDirection(vector.Ray))),
+                   glm::vec3{1.0f, glm::length(vector.Ray), 1.0f});
+    glActiveTexture(GL_TEXTURE0);
+    builtinMaterial(gpu::WHITE)->textures.at(GL_TEXTURE0)->bind();
+    shaderProgram->uniforms.at("u_model") << model;
+    shaderProgram->uniforms.at("u_color") << vector.color.vec4();
+    if (vao == nullptr) {
+        vao = createVAO();
+        glBindVertexArray(*vao);
+        vbo = createVBO();
+        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::vector_vertices), gpu::vector_vertices,
+                     GL_STATIC_DRAW);
+        ebo = createVBO();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::vector_indices), gpu::vector_indices,
+                     GL_STATIC_DRAW);
+        _setupAttribPosNorUV_Interleaved();
+    }
+    glBindVertexArray(*vao);
+    glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_SHORT, NULL);
 }

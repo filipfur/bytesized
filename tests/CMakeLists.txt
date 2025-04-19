@@ -13,8 +13,8 @@ add_executable(test_bytesized
 )
 
 target_link_libraries(test_bytesized
-    GTest::gtest #GTest::gtest_main
-    bytesized
+    GTest::gtest
+    bytesized_engine
 )
 
 add_test(NAME bytesized_tests COMMAND test_bytesized)
