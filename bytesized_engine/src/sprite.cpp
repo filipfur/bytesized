@@ -16,7 +16,7 @@ void SpriteRenderer::create(float width, float height) {
 
 void SpriteRenderer::update(uint16_t dt) {
     for (auto &sprite : sprites) {
-        const auto &frames = sprite.animation_it->frames;
+        auto &frames = sprite.animation_it->frames;
         if (sprite.frame_ms <= dt) {
             ++sprite.frame_it;
             if (sprite.frame_it == frames.end()) {

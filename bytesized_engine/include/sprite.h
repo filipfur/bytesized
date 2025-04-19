@@ -1,10 +1,9 @@
 #pragma once
 
 #include "gpu.h"
-#include <array>
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <list>
-#include <unordered_map>
 #include <vector>
 
 struct AtlasRegion {
@@ -34,12 +33,12 @@ struct AnimationFrame {
     const AtlasRegion &region;
     const uint16_t duration;
 };
-using AnimationFrames = std::vector<const AnimationFrame>;
+using AnimationFrames = std::vector<AnimationFrame>;
 struct Animation {
     gpu::Texture *texture;
     AnimationFrames frames;
 };
-using Animations = std::vector<const Animation>;
+using Animations = std::vector<Animation>;
 
 struct Sprite {
     Sprite(glm::vec2 t, glm::vec2 s) : translation{t}, scale{s}, frame_ms{0}, flip{0, 0} {}
