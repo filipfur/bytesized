@@ -33,6 +33,7 @@ This section aims to keep track of features both completed and under development
 |3D model loading|Reading .glb    |Completed       |2024-11-13      |
 |3D model loading|Embedding .glb  |Completed       |2024-11-13      |
 |2D image loading|Embedding image |Completed       |2024-11-13      |
+|2D sprites      |W/ texture atlas|Completed       |2025-04-19      |
 |Parsing GLTF    |Nodes/meshes    |Completed       |2024-11-13      |
 |Parsing GLTF    |Textures/images |Completed       |2024-11-13      |
 |Parsing GLTF    |Skins           |Completed       |2024-11-13      |
@@ -42,14 +43,15 @@ This section aims to keep track of features both completed and under development
 |Rendering       |Text/bdf font   |Completed       |2024-12-19      |
 |Rendering       |Normal mapping  |Backlog         |-               |
 |Rendering       |Parallax mapping|Backlog         |-               |
-|Collision       |Skeletal IK     |Backlog         |-               |
-|Collision       |AABB            |Backlog         |-               |
-|Collision       |Sphere          |Backlog         |-               |
-|Collision       |OOBB            |Backlog         |-               |
-|Collision       |Convex poly(GJK)|Backlog         |-               |
+|Collision       |Skeletal IK     |Completed       |2025-04-19      |
+|Collision       |AABB            |Completed       |2025-04-19      |
+|Collision       |Sphere          |Completed       |2025-04-19      |
+|Collision       |OOBB            |Completed       |2025-04-19      |
+|Collision       |Convex poly(GJK)|Completed       |2025-04-19      |
 |Collision       |Ragdoll         |Backlog         |-               |
-|Physics         |Collision resp. |Backlog         |-               |
+|Physics         |Collision resp. |Completed       |2025-04-19      |
 |System          |ECS             |Completed       |2024-11-16      |
 |Editor          |Camera control  |Completed       |2024-12-19      |
 |Editor          |Object transform|Completed       |2024-12-19      |
+|UI              |Splitview(panel)|Backlog         |-               |
 |Console         |-               |Completed       |2024-12-19      |
