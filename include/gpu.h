@@ -197,7 +197,7 @@ Primitive *createPrimitive(const glm::vec3 *positions, const glm::vec3 *normals,
                            size_t index_count);
 Primitive *createPrimitive(const VertexObject &vertexObject);
 
-enum BuiltinMaterial { CHECKERS, GRID_TILE, WHITE, MATERIAL_COUNT };
+enum BuiltinMaterial { CHECKERS, GRID_TILE, WHITE, COLOR_MAP, MATERIAL_COUNT };
 Material *builtinMaterial(BuiltinMaterial builtinMaterial);
 
 void renderScreen();

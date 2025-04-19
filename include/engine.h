@@ -7,6 +7,7 @@
 #include "editor.h"
 #include "geom_primitive.h"
 #include "gui.h"
+#include "panel.h"
 #include "persist.h"
 #include "window.h"
 #include <list>
@@ -20,12 +21,6 @@ struct IGame {
 struct IApplication {
     virtual void appInit(struct Engine *engine) = 0;
     virtual void appLoad(struct Engine *engine) = 0;
-};
-
-struct Panel {
-    enum Type { UNUSED, COLLECTION, SAVE_FILE } type;
-    void *ptr;
-    CameraView cameraView;
 };
 
 struct Engine : public window::IEngine,
@@ -92,10 +87,6 @@ struct Engine : public window::IEngine,
     assets::Collection *addGLB(const uint8_t *data);
     assets::Collection *findCollection(const char *name);
 
-    Panel *assignPanel(Panel::Type type, void *ptr);
-    bool openPanel(size_t index);
-    void changePanel(Panel *panel);
-
     void _openCollection(const assets::Collection &collection);
 
     bool nodeClicked(gpu::Node *node) override;
@@ -132,9 +123,10 @@ struct Engine : public window::IEngine,
     GUI gui;
     std::list<assets::Collection> _collections;
     persist::SaveFile _saveFile;
-    Panel _panels[10];
-    Panel *_panel{nullptr};
-    bool _blockMode{false};
+    bool _snapping{false};
     glm::mat4 perspectiveProjection;
     std::list<Vector> vectors;
+
+  private:
+    bool _openPanel(Panel *panel);
 };

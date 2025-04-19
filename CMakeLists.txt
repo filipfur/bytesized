@@ -30,6 +30,8 @@ set(assets
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/text.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/text.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/texture.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/sprite.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/sprite.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/ui.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/billboard.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/console.png
@@ -37,8 +39,8 @@ set(assets
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/ui.png
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/boxxy.bdf
 )
-embed_assets("${assets}" assets_headers)
-add_custom_target(bytesized_assets DEPENDS ${assets_headers})
+embed_assets("${assets}" _bytesized_assets_headers)
+add_custom_target(bytesized_assets DEPENDS ${_bytesized_assets_headers})
 
 add_library(bytesized
     stb/stb_image.cpp
@@ -78,6 +80,8 @@ add_library(bytesized
     src/skydome.cpp
     src/playerinput.cpp
     src/runtime.cpp
+    src/panel.cpp
+    src/sprite.cpp
 )
 add_dependencies(bytesized bytesized_assets)
 

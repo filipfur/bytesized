@@ -23,8 +23,8 @@
 #define GPU__NODE_COUNT 200
 #define GPU__SCENE_COUNT 10
 #define GPU__SKIN_COUNT 10
-#define GPU__SHADER_COUNT 20
-#define GPU__SHADERPROGRAM_COUNT 10
+#define GPU__SHADER_COUNT 30
+#define GPU__SHADERPROGRAM_COUNT 20
 #define GPU__TEXT_COUNT 10
 #define GPU__FRAMEBUFFER_COUNT 10
 #define GPU__ANIMATION__COUNT 50
@@ -113,6 +113,43 @@ void gpu::allocate() {
     _builtinMaterials[BuiltinMaterial::WHITE] = MATERIALS.acquire();
     _builtinMaterials[BuiltinMaterial::WHITE]->color = 0xFFFFFF;
     _builtinMaterials[BuiltinMaterial::WHITE]->textures.emplace(GL_TEXTURE0, _blankDiffuse);
+
+    _builtinMaterials[BuiltinMaterial::COLOR_MAP] = MATERIALS.acquire();
+    _builtinMaterials[BuiltinMaterial::COLOR_MAP]->color = rgb(255, 255, 255);
+    constexpr StaticTexture<8, 8, 4> colormap_tex{[](uint32_t x, uint32_t y) {
+        glm::vec3 c;
+        switch (x) {
+        case 0:
+            c = glm::vec3{1.0f, 0.0f, 0.0f};
+            break;
+        case 1:
+            c = glm::vec3{0.0f, 1.0f, 0.0f};
+            break;
+        case 2:
+            c = glm::vec3{0.0f, 0.0f, 1.0f};
+            break;
+        case 3:
+            c = glm::vec3{1.0f, 1.0f, 0.0f};
+            break;
+        case 4:
+            c = glm::vec3{0.0f, 1.0f, 1.0f};
+            break;
+        case 5:
+            c = glm::vec3{1.0f, 0.0f, 1.0f};
+            break;
+        case 7:
+            c = glm::vec3{0.0f, 0.0f, 0.0f};
+            break;
+        case 6:
+            c = glm::vec3{1.0f, 1.0f, 1.0f};
+            break;
+        }
+        return glm::vec4(c * (float)(y + 1.0f) / 8.0f, 1.0f);
+    }};
+    _builtinMaterials[BuiltinMaterial::COLOR_MAP]->textures.emplace(
+        GL_TEXTURE0,
+        createTexture(colormap_tex.buf, colormap_tex.width, colormap_tex.height,
+                      static_cast<ChannelSetting>(colormap_tex.channels), GL_UNSIGNED_BYTE));
 }
 
 void gpu::dispose() {

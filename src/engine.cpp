@@ -27,6 +27,8 @@ static gpu::Framebuffer *fbo{nullptr};
 static persist::SessionData sessionData;
 static gpu::Node *gridNode{nullptr};
 constexpr gpu::Plane<1, 1> grid(64.0f);
+Panel *_panel{nullptr};
+Panel *_previousPanel{nullptr};
 
 static Vector axisVectors[] = {
     {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, rgb(255, 0, 0)},
@@ -243,6 +245,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
                                               {"u_model", glm::mat4{1.0f}},
                                               {"u_metallic", 0.0f},
                                               {"u_time", 0.0f}});
+
     skydome::create();
     screenProgram =
         gpu::createShaderProgram(gpu::builtinShader(gpu::SCREEN_VERT),
@@ -288,7 +291,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
         }
         return false;
     });
-    _console.addCustomCommand(":spyro", [this](const char *) {
+    _console.addCustomCommand(":spyro", [this](const char * /*key*/) {
         if (auto sel = _editor.selectedNode()) {
             attachController(sel, geom::Geometry::Type::SPHERE);
             nodeSelected(sel);
@@ -333,6 +336,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     if (_iApp) {
         _iApp->appInit(this);
     }
+    _openPanel(Panel_assign(Panel::SAVE_FILE, (void *)&_saveFile));
 }
 
 bool Engine::update(float dt) {
@@ -384,10 +388,16 @@ static void _renderNodes(Editor &editor, gpu::ShaderProgram *shaderProgram,
             continue;
         }
         if (node == editor.selectedNode()) {
-            glStencilFunc(GL_ALWAYS, 1, 0xFF);
-            glStencilMask(0xFF);
+            auto mat = gpu::builtinMaterial(gpu::BuiltinMaterial::WHITE);
+            mat->color = Color(0x44AAFF) * Color::opacity(0.4f);
+            gpu::setOverrideMaterial(mat);
             node->render(shaderProgram);
-            glStencilMask(0x00);
+            mat->color = Color(0x44FFAA) * Color::opacity(0.7f);
+            node->recursive([](gpu::Node *n) { n->wireframe = true; });
+            node->render(shaderProgram);
+            node->recursive([](gpu::Node *n) { n->wireframe = false; });
+            gpu::setOverrideMaterial(nullptr);
+            continue;
         }
         if (auto entity = node->entity) {
             if (Controller *ctrl = CController::get_pointer(entity)) {
@@ -400,24 +410,6 @@ static void _renderNodes(Editor &editor, gpu::ShaderProgram *shaderProgram,
             }
         }
         node->render(shaderProgram);
-    }
-    if (auto sel = editor.selectedNode()) {
-        if ((sel->skin == nullptr) != skinned) {
-            glStencilFunc(GL_ALWAYS, 1, 0xFF);
-            glDisable(GL_DEPTH_TEST);
-            // glDisable(GL_CULL_FACE);
-            auto mat = gpu::builtinMaterial(gpu::BuiltinMaterial::WHITE);
-            mat->color = Color(0x44AAFF) * Color::opacity(0.4f);
-            gpu::setOverrideMaterial(mat);
-            sel->render(shaderProgram);
-            mat->color = Color(0x44FFAA) * Color::opacity(0.7f);
-            sel->recursive([](gpu::Node *node) { node->wireframe = true; });
-            sel->render(shaderProgram);
-            sel->recursive([](gpu::Node *node) { node->wireframe = false; });
-            gpu::setOverrideMaterial(nullptr);
-            // glEnable(GL_CULL_FACE);
-            glEnable(GL_DEPTH_TEST);
-        }
     }
 }
 
@@ -514,53 +506,55 @@ void Engine::draw() {
     }
 }
 
-bool Engine::keyDown(int key, int /*mods*/) {
+static void _changePanel(Panel *panel, Camera &camera) {
+    if (_panel) {
+        _panel->cameraView = camera.targetView;
+        _previousPanel = _panel;
+    }
+    _panel = panel;
+    camera.set(panel->cameraView);
+}
+
+bool Engine::keyDown(int key, int mods) {
     switch (key) {
     case SDLK_0:
-        _clickNPick.clear();
-        _panel = &_panels[0];
-        _editor.selectNode(nullptr);
-        std::for_each(_saveFile.nodes.begin(), _saveFile.nodes.end(),
-                      [this](gpu::Node *node) { _clickNPick.registerNode(node); });
-        _camera.set(_panel->cameraView);
-        return true;
+        break;
     case SDLK_1:
     case SDLK_2:
     case SDLK_3:
+        if (mods & KMOD_SHIFT) {
+            if (_previousPanel) {
+                _changePanel(_previousPanel, _camera);
+                return true;
+            }
+            return false;
+        }
     case SDLK_4:
     case SDLK_5:
     case SDLK_6:
     case SDLK_7:
     case SDLK_8:
     case SDLK_9:
-        return openPanel(key - SDLK_0);
-    case SDLK_b:
-        if (_blockMode) {
-            _console.setSetting("tstep", "0");
-            _console.setSetting("rstep", "0");
-            gridNode->hidden = true;
-        } else {
-            _console.setSetting("tstep", "1");
-            _console.setSetting("rstep", "15");
-            gridNode->hidden = false;
+        return _openPanel(Panel_byIndex(key - SDLK_1));
+    case SDLK_g:
+        if (mods & KMOD_SHIFT) {
+            gridNode->hidden = !gridNode->hidden;
+            return true;
         }
-        _blockMode = !_blockMode;
-        return true;
-    case SDLK_i:
-        _camera.set({{0.0f, 0.0f, 0.0f}, 0.0f, -30.0f, 10.0f});
-        return true;
-    case SDLK_j:
-        _camera.set({{0.0f, 0.0f, 0.0f}, 90.0f, -30.0f, 10.0f});
-        return true;
-    case SDLK_k:
-        _camera.set({{0.0f, 0.0f, 0.0f}, 180.0f, -30.0f, 10.0f});
-        return true;
-    case SDLK_l:
-        _camera.set({{0.0f, 0.0f, 0.0f}, -90.0f, -30.0f, 10.0f});
-        return true;
-    // case SDLK_l:
-    //     gpu::SETTINGS_LERP = !gpu::SETTINGS_LERP;
-    //     return true;
+        break;
+    case SDLK_s:
+        if (mods & KMOD_SHIFT) {
+            if (_snapping) {
+                _console.setSetting("tstep", "0");
+                _console.setSetting("rstep", "0");
+            } else {
+                _console.setSetting("tstep", "1");
+                _console.setSetting("rstep", "15");
+            }
+            _snapping = !_snapping;
+            return true;
+        }
+        break;
     case SDLK_ESCAPE:
         quit(false);
         return true;
@@ -694,29 +688,23 @@ bool Engine::closeSaveFile() {
 }
 
 bool Engine::openSaveFile(const char *fpath) {
+    if (fpath == nullptr || strlen(fpath) == 0) {
+        return false;
+    }
     if (_saveFile.dirty) {
         return false;
     }
     closeSaveFile();
-    _clickNPick.clear();
-    if (strlen(fpath) > 0) {
-        strcpy(_saveFile.path, fpath);
-        loadWorld(fpath, _saveFile);
-        _panel = &_panels[0];
-        _panel->ptr = &_saveFile;
-        gui.setTitleText(_saveFile.path);
-        _editor.selectNode(nullptr);
-        std::for_each(_saveFile.nodes.begin(), _saveFile.nodes.end(),
-                      [this](gpu::Node *node) { _clickNPick.registerNode(node); });
-        _panel = &_panels[0];
-        _panel->type = Panel::SAVE_FILE;
-        _panel->ptr = &_saveFile;
-        if (_iApp) {
-            _iApp->appLoad(this);
-        }
-        return true;
+    strcpy(_saveFile.path, fpath);
+    loadWorld(fpath, _saveFile);
+    _editor.selectNode(nullptr);
+    std::for_each(_saveFile.nodes.begin(), _saveFile.nodes.end(),
+                  [this](gpu::Node *node) { _clickNPick.registerNode(node); });
+    if (_iApp) {
+        _iApp->appLoad(this);
     }
-    return false;
+    _changePanel(Panel_byIndex(0), _camera);
+    return true;
 }
 bool Engine::saveSaveFile(const char *fpath) {
     const char *path = (fpath != nullptr && strlen(fpath) > 0) ? fpath : _saveFile.path;
@@ -730,55 +718,36 @@ bool Engine::saveSaveFile(const char *fpath) {
     return false;
 }
 
-Panel *Engine::assignPanel(Panel::Type type, void *ptr) {
-    const int N = sizeof(_panels) / sizeof(Panel);
-    static int nextFree{1};
-    for (auto &panel : _panels) {
-        if (panel.ptr == ptr) {
-            assert(panel.type == panel.type);
-            return &panel;
-        }
+bool Engine::_openPanel(Panel *panel) {
+    size_t index = Panel_index(panel);
+    if (panel == nullptr) {
+        printf("Panel %zu is not assigned\n", index);
+        return false;
     }
-    _panels[nextFree].ptr = ptr;
-    _panels[nextFree].type = type;
-    _panels[nextFree].cameraView = {{0.0f, 0.0f, 0.0f}, 0.0f, -15.0f, 10.0f};
-    changePanel(_panels + nextFree);
-    nextFree = (nextFree + 1) % N;
-    return _panel;
-}
-
-bool Engine::openPanel(size_t index) {
-    if (index < 10) {
-        auto &panel = _panels[index];
-        if (&panel == _panel) {
-            return false;
-        }
-        switch (panel.type) {
-        case Panel::COLLECTION:
-            _openCollection(*((assets::Collection *)panel.ptr));
-            break;
-        case Panel::SAVE_FILE:
-            openSaveFile(((persist::SaveFile *)panel.ptr)->path);
-            break;
-        default:
-            return false;
-        }
-        changePanel(_panels + index);
+    if (panel == _panel) {
+        printf("Panel %zu already open\n", index);
+        return false;
     }
+    _clickNPick.clear();
+    _editor.selectNode(nullptr);
+    switch (panel->type) {
+    case Panel::COLLECTION:
+        gui.setTitleText(((assets::Collection *)panel->data)->name().c_str());
+        _openCollection(*((assets::Collection *)panel->data));
+        break;
+    case Panel::SAVE_FILE:
+        gui.setTitleText(_saveFile.path);
+        openSaveFile(((persist::SaveFile *)panel->data)->path);
+        break;
+    default:
+        return false;
+    }
+    _changePanel(panel, _camera);
     return true;
-}
-
-void Engine::changePanel(Panel *panel) {
-    if (_panel) {
-        _panel->cameraView = _camera.targetView;
-    }
-    _panel = panel;
-    _camera.set(panel->cameraView);
 }
 
 void Engine::_openCollection(const assets::Collection &collection) {
     unstage();
-    gui.setTitleText(collection.name().c_str());
     stage(*collection.scene);
     _editor.selectNode(nullptr);
 }
@@ -788,7 +757,7 @@ bool Engine::openScene(size_t index) {
         auto it = _collections.begin();
         std::advance(it, index);
         _openCollection(*it);
-        _panel = assignPanel(Panel::COLLECTION, (void *)&(*it));
+        _openPanel(Panel_assign(Panel::COLLECTION, (void *)&(*it)));
         return true;
     }
     return false;
@@ -797,7 +766,7 @@ bool Engine::openScene(size_t index) {
 bool Engine::openScene(const char *name) {
     if (auto *collection = findCollection(name)) {
         _openCollection(*collection);
-        _panel = assignPanel(Panel::COLLECTION, (void *)collection);
+        _openPanel(Panel_assign(Panel::COLLECTION, (void *)collection));
         return true;
     }
     return false;
@@ -1018,12 +987,8 @@ void Engine::loadLastSession() {
     if (persist::loadSession(sessionData)) {
         if (strlen(sessionData.recentFile) > 0) {
             openSaveFile(sessionData.recentFile);
-        } else {
-            _panel = &_panels[0];
-            _panel->type = _panels->SAVE_FILE;
-            _panel->ptr = &_saveFile;
+            sessionData.cameraView.yaw = primer::normalizedAngle(sessionData.cameraView.yaw);
+            _camera.set(sessionData.cameraView);
         }
-        sessionData.cameraView.yaw = primer::normalizedAngle(sessionData.cameraView.yaw);
-        _camera.set(sessionData.cameraView);
     }
 }

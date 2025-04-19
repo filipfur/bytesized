@@ -6,18 +6,6 @@
 #include "systime.h"
 #include <glm/gtc/quaternion.hpp>
 
-/*static gpu::Node *_createFrame(float width, float height, const glm::vec2 &frameDim,
-                               gpu::Texture *texture) {
-    gpu::Node *frame = gpu::createNode();
-    frame->scale = {frameDim.x, frameDim.y, 1.0f};
-    frame->mesh = gpu::createMesh();
-    auto mat = gpu::createMaterial();
-    mat->color = Color::white;
-    mat->textures.emplace(GL_TEXTURE0, texture);
-    frame->mesh->primitives.emplace_back(gpu::builtinPrimitives(gpu::SPRITE), mat);
-    return frame;
-}*/
-
 void GUI::create(bdf::Font *font_, float width_, float height_, float em_, Options options) {
     font = font_;
     width = width_;

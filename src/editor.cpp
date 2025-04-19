@@ -218,6 +218,7 @@ bool Editor::keyDown(int key, int mods) {
     if (SDL_IsTextInputActive()) {
         return false;
     }
+    bool nomod = (mods & (KMOD_ALT | KMOD_SHIFT | KMOD_CTRL | KMOD_LGUI)) == 0;
     switch (key) {
     case SDLK_TAB:
         selectNode(_iEditor->cycleNode(_selectedNode, mods & KMOD_SHIFT));
@@ -225,8 +226,9 @@ bool Editor::keyDown(int key, int mods) {
     case SDLK_SPACE:
         if (_selectedNode) {
             _camera.targetView.center = _selectedNode->translation.data();
+            return true;
         }
-        return true;
+        break;
     case SDLK_MINUS:
         _zoom(_camera, false);
         return true;
@@ -235,30 +237,33 @@ bool Editor::keyDown(int key, int mods) {
         return true;
     case SDLK_g:
     case SDLK_t:
-        startTranslation();
-        return true;
+        if (nomod) {
+            return startTranslation() != nullptr;
+        }
+        break;
     case SDLK_r:
         if (mods & KMOD_CTRL) {
-            undo_redo(futureEvents, historicEvents);
+            return undo_redo(futureEvents, historicEvents);
         } else if (_selectedNode) {
             _editMode = EditMode::ROTATE;
             _euler = _selectedNode->euler.data();
             auto &ev = emplaceHistoricEvent(HistoricEvent::ROTATE);
             ev.nodes.emplace_back(_selectedNode);
             ev.euler = _selectedNode->euler.data();
+            return true;
         }
-        return true;
+        break;
     case SDLK_s:
-        if (_selectedNode) {
+        if (_selectedNode && nomod) {
             _editMode = EditMode::SCALE;
             auto &ev = emplaceHistoricEvent(HistoricEvent::SCALE);
             ev.nodes.emplace_back(_selectedNode);
             ev.scale = _selectedNode->scale.data();
+            return true;
         }
-        return true;
+        break;
     case SDLK_u:
-        undo_redo(historicEvents, futureEvents);
-        return true;
+        return undo_redo(historicEvents, futureEvents);
     case SDLK_c:
         if ((mods & KMOD_LGUI) == 0 || _editMode != EditMode::NONE) {
             break;
@@ -294,8 +299,7 @@ bool Editor::keyDown(int key, int mods) {
             _iEditor->nodeTransformed(_selectedNode);
             return true;
         }
-        removeNode(_selectedNode);
-        return true;
+        return removeNode(_selectedNode) != nullptr;
     case SDLK_z:
         if (_editMode != EditMode::NONE) {
             _editAxis = _editAxis != EditAxis::Z ? EditAxis::Z : EditAxis::NONE;
@@ -304,11 +308,11 @@ bool Editor::keyDown(int key, int mods) {
             return true;
         }
         if ((mods & (KMOD_LGUI | KMOD_LSHIFT)) == (KMOD_LGUI | KMOD_LSHIFT)) {
-            undo_redo(futureEvents, historicEvents);
+            return undo_redo(futureEvents, historicEvents);
         } else if (mods & KMOD_LGUI) {
-            undo_redo(historicEvents, futureEvents);
+            return undo_redo(historicEvents, futureEvents);
         }
-        return true;
+        break;
     case SDLK_ESCAPE:
         if (_editMode == EditMode::TRANSLATE) {
             _editMode = EditMode::NONE;

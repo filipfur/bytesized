@@ -13,6 +13,7 @@ class Uniform {
     Uniform(const glm::vec4 &value) : type{VEC4}, v4{value} {}
     Uniform(const glm::mat3 &value) : type{MAT3}, m3{value} {}
     Uniform(const glm::mat4 &value) : type{MAT4}, m4{value} {}
+    Uniform(const glm::ivec2 &value) : type{IVEC2}, iv2{value} {}
 
     Uniform &operator=(const int &value);
     Uniform &operator=(const float &value);
@@ -21,6 +22,7 @@ class Uniform {
     Uniform &operator=(const glm::vec4 &value);
     Uniform &operator=(const glm::mat3 &value);
     Uniform &operator=(const glm::mat4 &value);
+    Uniform &operator=(const glm::ivec2 &value);
 
     gpu::Uniform &operator<<(const int &value);
     gpu::Uniform &operator<<(const float &value);
@@ -29,13 +31,14 @@ class Uniform {
     gpu::Uniform &operator<<(const glm::vec4 &value);
     gpu::Uniform &operator<<(const glm::mat3 &value);
     gpu::Uniform &operator<<(const glm::mat4 &value);
+    gpu::Uniform &operator<<(const glm::ivec2 &value);
 
     void update();
 
     int location;
 
   private:
-    enum Type { UNDEFINED, INTEGER, FLOAT, VEC2, VEC3, VEC4, MAT3, MAT4 } type;
+    enum Type { UNDEFINED, INTEGER, FLOAT, VEC2, VEC3, VEC4, MAT3, MAT4, IVEC2 } type;
     union {
         int i;
         float f;
@@ -44,6 +47,7 @@ class Uniform {
         glm::vec4 v4;
         glm::mat3 m3;
         glm::mat4 m4;
+        glm::ivec2 iv2;
     };
 };
 } // namespace gpu

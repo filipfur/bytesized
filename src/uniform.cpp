@@ -26,6 +26,9 @@ void gpu::Uniform::update() {
     case MAT4:
         this->operator<<(m4);
         break;
+    case IVEC2:
+        this->operator<<(iv2);
+        break;
     case UNDEFINED:
         break;
     }
@@ -66,6 +69,11 @@ gpu::Uniform &gpu::Uniform::operator=(const glm::mat4 &value) {
     return this->operator<<(value);
 }
 
+gpu::Uniform &gpu::Uniform::operator=(const glm::ivec2 &value) {
+    iv2 = value;
+    return this->operator<<(value);
+}
+
 gpu::Uniform &gpu::Uniform::operator<<(const int &value) {
     glUniform1i(location, value);
     return *this;
@@ -98,5 +106,9 @@ gpu::Uniform &gpu::Uniform::operator<<(const glm::mat3 &value) {
 
 gpu::Uniform &gpu::Uniform::operator<<(const glm::mat4 &value) {
     glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+    return *this;
+}
+gpu::Uniform &gpu::Uniform::operator<<(const glm::ivec2 &value) {
+    glUniform2iv(location, 1, glm::value_ptr(value));
     return *this;
 }
