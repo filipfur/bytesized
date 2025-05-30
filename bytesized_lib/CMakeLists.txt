@@ -1,7 +1,6 @@
 add_library(bytesized_lib
     ${BYTESIZED_DIR}/stb/stb_image.cpp
     src/geom_obb.cpp
-    src/assets.cpp
     src/geom_aabb.cpp
     src/text.cpp
     src/geom_sphere.cpp
@@ -12,7 +11,9 @@ add_library(bytesized_lib
     src/camera.cpp
     src/window.cpp
     src/timer.cpp
-    src/texture.cpp
+    src/gpu_texture.cpp
+    src/gpu_primitive.cpp
+    src/gpu_skinning.cpp
     src/color.cpp
     src/bdf.cpp
     src/ecs.cpp
@@ -23,7 +24,11 @@ add_library(bytesized_lib
     src/trs.cpp
     src/polygonize.cpp
     src/geom_convexhull.cpp
+    src/sprite.cpp
     src/time.cpp
+    src/blur_renderer.cpp
+    src/frame.cpp
+    src/skydome.cpp
 )
 
 find_package(SDL2 REQUIRED)

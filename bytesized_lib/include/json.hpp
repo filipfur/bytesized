@@ -65,6 +65,27 @@ inline static void parseString(JsonStream &js, const std::string_view &parent,
     }
 }
 
+inline static void parseBool(JsonStream &js, const std::string_view &parent,
+                             const std::string_view &mkey, const char *str, size_t len, size_t &i) {
+    assert(str[i] == 't' || str[i] == 'f');
+    ++i;
+    const char *tok = str + i - 1;
+    for (; i < len; ++i) {
+        if (str[i] == 'e') {
+            const std::string_view s = {tok, size_t((str + i) - tok + 1)};
+            int retval = 0;
+            if (s.compare("true") == 0) {
+                retval = 1;
+            } else {
+                printf("s<%d>=%.*s\n", (int)s.length(), (int)s.length(), s.data());
+                assert(s.compare("false") == 0);
+            }
+            js.value(parent, mkey, retval);
+            break;
+        }
+    }
+}
+
 inline static void parseKey(JsonStream &js, const std::string_view &parent, const char *str,
                             size_t len, size_t &i) {
     assert(str[i] == '"');
@@ -91,6 +112,9 @@ inline static void parseKey(JsonStream &js, const std::string_view &parent, cons
         default:
             if (validDigit(str[i])) {
                 parseNumber(js, parent, kkey, str, len, i);
+                return;
+            } else if (str[i] == 't' || str[i] == 'f') {
+                parseBool(js, parent, kkey, str, len, i);
                 return;
             }
             break;

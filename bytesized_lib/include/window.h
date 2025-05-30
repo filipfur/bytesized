@@ -2,7 +2,11 @@
 
 // Default headers (more than necessary)
 #include "timer.h"
+#ifdef __EMSCRIPTEN__
+#include <SDL2/SDL.h>
+#else
 #include <SDL.h>
+#endif
 
 #define __WBINDERS                                                                                 \
     __WBINDER(KeyListener)                                                                         \
@@ -13,7 +17,7 @@
 
 namespace window {
 
-struct IEngine {
+struct IWindowApp {
     virtual void init(int drawableWidth, int drawableHeight) = 0;
     virtual bool update(float dt) = 0;
     virtual void resize(int drawableWidth, int drawableHeight) = 0;
@@ -44,13 +48,12 @@ struct ITextListener {
 };
 
 void create(const char *title, int winX, int winY, bool fullscreen);
-void registerEngine(IEngine *iApplication);
+void registerWindowApp(IWindowApp *iWindowApp);
 #define __WBINDER(symbol)                                                                          \
     void register##symbol(I##symbol *i##symbol);                                                   \
     void disable##symbol(I##symbol *i##symbol, bool disabled);
 __WBINDERS
 #undef __WBINDER
-
 void loop_forever();
 
 } // namespace window

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "gcem.hpp"
 #include "gpu.h"
 #include "library.h"
 #include <array>
@@ -10,16 +9,6 @@
 
 namespace gpu {
 // clang-format off
-static const float screen_vertices[] = {
-    -1.0f, -1.0f, 0.0f, 0.0f,
-    +1.0f, -1.0f, 1.0f, 0.0f,
-    -1.0f, +1.0f, 0.0f, 1.0f,
-    +1.0f, +1.0f, 1.0f, 1.0f,
-};
-static const uint16_t screen_indices[] = {
-    0, 1, 2,
-    1, 3, 2
-};
 
 static const float vector_vertices[] = {
     -0.1f, +0.0f, -0.1f,    -0.1f, +0.0f, -0.1f,   0.0f, 0.0f,
@@ -222,7 +211,7 @@ template <std::size_t segments, std::size_t discs> struct Sphere {
         OPT_CONE_B = (1 << 3),
         OPT_CYLINDER = (1 << 4),
     };
-    constexpr Sphere(Options options = OPT_NONE) : positions{}, normals{}, uvs{}, indices{} {
+    Sphere(Options options = OPT_NONE) : positions{}, normals{}, uvs{}, indices{} {
         float s = 1.0f / static_cast<float>(segments);
         uint16_t vs_i = 0;
         float theta = M_PI / static_cast<float>(discs);
@@ -239,13 +228,13 @@ template <std::size_t segments, std::size_t discs> struct Sphere {
                 r = 1.0f - (float)j / discs;
                 y = -1.0f + (float)j / discs * 2.0f;
             } else {
-                y = -gcem::cos(theta * j);
+                y = -glm::cos(theta * j);
                 float f = 1.0 - y * y;
-                r = f < FLT_EPSILON ? 0.0f : gcem::sqrt(f) + FLT_EPSILON;
+                r = f < FLT_EPSILON ? 0.0f : glm::sqrt(f) + FLT_EPSILON;
             }
             for (uint16_t i{0}; i <= segments; ++i) {
                 float a = 2.0f * M_PI * i * s;
-                glm::vec3 v{gcem::sin(a) * r, y, gcem::cos(a) * r};
+                glm::vec3 v{glm::sin(a) * r, y, glm::cos(a) * r};
                 positions[vs_i] = v;
                 normals[vs_i] = v;
                 uvs[vs_i] = {i * s, y * 0.5f + 0.5f};
@@ -281,7 +270,6 @@ library::Collection *createBuiltinPrimitives();
 enum BuiltinPrimitives { SPRITE, BILLBOARD, PLANE, CUBE, SPHERE, CYLINDER, CONE, PRIMITIVE_COUNT };
 gpu::Primitive *builtinPrimitives(BuiltinPrimitives builtinPrimitives);
 
-void renderScreen();
 void renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector);
 
 } // namespace gpu

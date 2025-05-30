@@ -1,12 +1,14 @@
 #pragma once
 
 #include "bdf.h"
+#include "bytesized_info.h"
 #include "color.h"
 #include "ecs.h"
+#include "gpu_skinning.h"
+#include "gpu_texture.h"
 #include "library_types.h"
 #include "opengl.h"
 #include "recycler.hpp"
-#include "texture.h"
 #include "trs.h"
 #include "uniform.h"
 #include "vector.h"
@@ -44,8 +46,15 @@ struct Material {
 
 void bindMaterial(ShaderProgram *shaderProgram, Material *material);
 
+struct VertexArray {
+    uint32_t id;
+    void bind() { glBindVertexArray(id); }
+    void unbind() { glBindVertexArray(0); }
+};
+static_assert(sizeof(VertexArray) == sizeof(uint32_t));
+
 struct Primitive {
-    uint32_t *vao;
+    VertexArray *vao;
     std::vector<uint32_t *> vbos;
     uint32_t *ebo;
     uint32_t count;
@@ -57,6 +66,7 @@ struct UniformBuffer {
     uint32_t *id;
     uint32_t bindingPoint;
     const char *label;
+    void bindShader(gpu::ShaderProgram *shaders);
     void bindShaders(std::initializer_list<gpu::ShaderProgram *> shaders);
 
     void bind();
@@ -77,7 +87,6 @@ struct Node : TRS {
     Mesh *mesh;
     std::vector<Node *> children;
     bool hidden;
-    struct Skin *skin;
     bool wireframe;
     ecs::Entity *entity;
     Node *find(std::function<bool(Node *)> callback) {
@@ -91,6 +100,8 @@ struct Node : TRS {
         }
         return nullptr;
     }
+#ifdef BYTESIZED_USE_SKINNING
+    struct Skin *skin;
     struct Skin *getSkin() {
         if (skin) {
             return skin;
@@ -98,6 +109,7 @@ struct Node : TRS {
         auto *n = find([](Node *n) { return n->skin; });
         return n ? n->skin : nullptr;
     }
+#endif
 
     void render(ShaderProgram *shaderProgram);
     Node *childByName(const char *name);
@@ -112,58 +124,6 @@ struct Node : TRS {
     Material *material(size_t primitiveIndex = 0);
 };
 
-struct Frame {
-    float time;
-    union {
-        glm::vec3 v3;
-        glm::quat q;
-    };
-};
-
-struct Channel {
-    std::vector<Frame> frames;
-    std::vector<Frame>::iterator current;
-};
-
-struct Animation {
-    const library::Animation *libraryAnimation;
-    float startTime;
-    float endTime;
-    enum ChannelType { CH_TRANSLATION, CH_ROTATION, CH_SCALE };
-    std::unordered_map<gpu::Node *, std::array<Channel, 3>> channels;
-    std::string_view name;
-    bool looping;
-
-    void start();
-    void stop();
-};
-
-struct Playback {
-    Animation *animation;
-    bool paused;
-    float time;
-    bool expired() { return time >= animation->endTime; }
-};
-
-Animation *createAnimation(const library::Animation &animation, gpu::Node *retargetNode);
-void freeAnimation(Animation *animation);
-
-Playback *createPlayback(Animation *animation);
-void freePlayback(Playback *playback);
-
-void animate(float dt);
-
-struct Skin {
-    const library::Skin *librarySkin;
-    std::vector<Node *> joints;
-
-    std::vector<gpu::Animation *> animations;
-    gpu::Playback *playback;
-
-    gpu::Animation *findAnimation(const char *name);
-    gpu::Playback *playAnimation(const char *name);
-};
-
 struct Scene {
     const library::Scene *libraryScene;
     std::vector<Node *> nodes;
@@ -176,12 +136,10 @@ struct Text {
 
     void init();
     void setText(const char *value, bool center);
-    const char *text() const;
     float width() const;
     float height() const;
 
-  private:
-    const char *_value;
+    const char *value;
 };
 
 struct Framebuffer {
@@ -195,17 +153,18 @@ struct Framebuffer {
                        ChannelSetting channels, uint32_t type);
     void createDepthStencil(uint32_t width, uint32_t height);
     void createRenderBufferDS(uint32_t width, uint32_t height);
-    void checkStatus();
+    void checkStatus(const char *label);
     void unbind();
 };
 
+void printAllocations();
 void allocate();
 void dispose();
 
 void setOverrideMaterial(gpu::Material *material);
 
-uint32_t *createVAO();
-uint32_t *createVBO();
+VertexArray *createVertexArray();
+uint32_t *createVertexBuffer();
 
 Mesh *createMesh();
 Mesh *createMesh(gpu::Primitive *primitive, gpu::Material *material = nullptr);
@@ -253,7 +212,9 @@ UniformBuffer *createUniformBuffer(uint32_t bindingPoint, const char *label, uin
                                    void *data = NULL);
 void freeUniformBuffer(UniformBuffer *ubo);
 
-Shader *createShader(uint32_t type, const char *src);
+void createSharedSource(const char *name, const char *src);
+Shader *createShader(uint32_t type, const char *src,
+                     const std::unordered_set<std::string> &defines = {});
 void freeShader(Shader *shader);
 ShaderProgram *createShaderProgram(Shader *vertex, Shader *fragment,
                                    std::unordered_map<std::string, Uniform> &&uniforms);
@@ -287,11 +248,26 @@ struct GUIBlock {
 
 enum BuiltinUBO {
     UBO_CAMERA,
-    UBO_SKINNING,
     UBO_LIGHT,
-    // UBO_GUI,
+#ifdef BYTESIZED_USE_SKINNING
+    UBO_SKINNING,
+#endif
 };
 UniformBuffer *builtinUBO(BuiltinUBO bultinUBO);
 void createBuiltinUBOs();
+
+struct Collection {
+    Collection(const library::Collection &collection);
+    void create(const library::Collection &collection);
+    const std::string &name() const;
+    gpu::Scene *scene;
+    std::vector<Texture> texture;
+#ifdef BYTESIZED_USE_SKINNING
+    gpu::Animation *animationByName(const char *name);
+    std::vector<gpu::Animation *> animations;
+#endif
+};
+
+void renderScreen();
 
 }; // namespace gpu

@@ -19,7 +19,7 @@ void gpu::Text::init() {
 
     auto &[primitive, material] = node->mesh->primitives.front();
     uint32_t *vbo = primitive->vbos.front();
-    glBindVertexArray(*primitive->vao);
+    primitive->vao->bind();
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
 
@@ -37,8 +37,8 @@ void gpu::Text::init() {
     primitive->count = sizeof(indices) / sizeof(uint16_t);
 }
 
-void gpu::Text::setText(const char *value, bool center) {
-    _value = value;
+void gpu::Text::setText(const char *value_, bool center) {
+    value = value_;
 
     const size_t V = 4;
     const size_t A = 8;
@@ -117,7 +117,7 @@ void gpu::Text::setText(const char *value, bool center) {
     }
 
     auto &[primitive, material] = node->mesh->primitives.front();
-    glBindVertexArray(*primitive->vao);
+    primitive->vao->bind();
     uint32_t *vbo = primitive->vbos.front();
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
     glBufferData(GL_ARRAY_BUFFER, letters * V * A * sizeof(float), vertices.data(),
@@ -132,7 +132,5 @@ void gpu::Text::setText(const char *value, bool center) {
     primitive->count = elementCount;
 }
 
-const char *gpu::Text::text() const { return _value; }
-
-float gpu::Text::width() const { return bdfFont->pw * strlen(_value); }
+float gpu::Text::width() const { return bdfFont->pw * strlen(value); }
 float gpu::Text::height() const { return bdfFont->ph; }

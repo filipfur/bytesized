@@ -3,6 +3,10 @@
 #include "opengl.h"
 #include <cassert>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 #ifdef _WIN32
 #undef main
 #endif
@@ -12,12 +16,12 @@
         functionCall                                                                               \
     }
 
-static const int UPDATE_FREQ = 100;
+static const int UPDATE_FREQ = 60;
 static const int PERIOD_TIME_MS = 1000 / UPDATE_FREQ;
 static constexpr float DELTA_TIME_S = 1.0f / static_cast<float>(UPDATE_FREQ);
 
 static const size_t BINDERS_MAX = 4;
-static window::IEngine *_iApplication;
+static window::IWindowApp *_iWindowApp;
 #define __WBINDER(symbol)                                                                          \
     static window::I##symbol *_i##symbol[BINDERS_MAX] = {};                                        \
     static bool _d##symbol[BINDERS_MAX] = {};
@@ -56,123 +60,127 @@ void window::create(const char *title, int winX, int winY, bool fullscreen) {
 
     SDL_StopTextInput();
 
-    _iApplication->init(drawableWidth, drawableHeight);
+    _iWindowApp->init(drawableWidth, drawableHeight);
 }
 
-void window::loop_forever() {
+static bool _running = true;
+static void _mainLoop() {
     static SDL_Event event;
-    static bool running{true};
     static uint32_t lastTick{0};
     static uint32_t deltaTicks{0};
     static uint32_t fpsTime{0};
     static uint16_t fpsCounter{0};
     static float fpsAcc{0};
-    while (running) {
-        if (SDL_PollEvent(&event)) {
-            switch (event.type) {
-            case SDL_MOUSEBUTTONDOWN:
-                FOR_ITH(
-                    _iMouseListener,
-                    if (_iMouseListener[i] &&
-                        !_dMouseListener[i]) if (_iMouseListener[i]->mouseDown(event.button.button,
-                                                                               event.button.x,
-                                                                               event.button.y)) {
-                        break;
-                    })
-                break;
-            case SDL_MOUSEBUTTONUP:
-                FOR_ITH(
-                    _iMouseListener,
-                    if (_iMouseListener[i] &&
-                        !_dMouseListener[i]) if (_iMouseListener[i]->mouseUp(event.button.button,
-                                                                             event.button.x,
-                                                                             event.button.y)) {
-                        break;
-                    })
-                break;
-            case SDL_MOUSEWHEEL:
-                FOR_ITH(
-                    _iMouseWheelListener,
-                    if (_iMouseWheelListener[i] &&
-                        !_dMouseWheelListener[i]) if (_iMouseWheelListener[i]
-                                                          ->mouseScrolled(event.wheel.preciseX,
-                                                                          event.wheel.preciseY)) {
-                        break;
-                    })
-                break;
-            case SDL_MOUSEMOTION:
-                FOR_ITH(
-                    _iMouseMotionListener,
-                    if (_iMouseMotionListener[i] &&
-                        !_dMouseMotionListener[i]) if (_iMouseMotionListener[i]
-                                                           ->mouseMoved(
-                                                               event.motion.x, event.motion.y,
-                                                               event.motion.xrel,
-                                                               event.motion.yrel)) { break; })
-                break;
-            case SDL_KEYDOWN:
-                FOR_ITH(
-                    _iKeyListener,
-                    if (_iKeyListener[i] &&
-                        !_dKeyListener[i]) if (_iKeyListener[i]->keyDown(event.key.keysym.sym,
-                                                                         event.key.keysym.mod)) {
-                        break;
-                    })
-                break;
-            case SDL_KEYUP:
-                FOR_ITH(
-                    _iKeyListener,
-                    if (_iKeyListener[i] &&
-                        !_dKeyListener[i]) if (_iKeyListener[i]->keyUp(event.key.keysym.sym,
-                                                                       event.key.keysym.mod)) {
-                        break;
-                    })
-                break;
-            case SDL_TEXTINPUT:
-                FOR_ITH(
-                    _iTextListener,
-                    if (_iTextListener[i] &&
-                        !_dTextListener[i]) if (_iTextListener[i]->textInput(event.text.text)) {
-                        break;
-                    })
-                break;
-            case SDL_QUIT:
-                running = false;
-                break;
-            }
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+        case SDL_MOUSEBUTTONDOWN:
+            FOR_ITH(
+                _iMouseListener,
+                if (_iMouseListener[i] && !_dMouseListener[i]) if (_iMouseListener[i]->mouseDown(
+                                                                       event.button.button,
+                                                                       event.button.x,
+                                                                       event.button.y)) { break; })
+            break;
+        case SDL_MOUSEBUTTONUP:
+            FOR_ITH(
+                _iMouseListener,
+                if (_iMouseListener[i] && !_dMouseListener[i]) if (_iMouseListener[i]->mouseUp(
+                                                                       event.button.button,
+                                                                       event.button.x,
+                                                                       event.button.y)) { break; })
+            break;
+        case SDL_MOUSEWHEEL:
+            FOR_ITH(
+                _iMouseWheelListener,
+                if (_iMouseWheelListener[i] &&
+                    !_dMouseWheelListener[i]) if (_iMouseWheelListener[i]
+                                                      ->mouseScrolled(event.wheel.preciseX,
+                                                                      event.wheel.preciseY)) {
+                    break;
+                })
+            break;
+        case SDL_MOUSEMOTION:
+            FOR_ITH(
+                _iMouseMotionListener,
+                if (_iMouseMotionListener[i] &&
+                    !_dMouseMotionListener[i]) if (_iMouseMotionListener[i]
+                                                       ->mouseMoved(event.motion.x, event.motion.y,
+                                                                    event.motion.xrel,
+                                                                    event.motion.yrel)) { break; })
+            break;
+        case SDL_KEYDOWN:
+            FOR_ITH(
+                _iKeyListener,
+                if (_iKeyListener[i] &&
+                    !_dKeyListener[i]) if (_iKeyListener[i]->keyDown(event.key.keysym.sym,
+                                                                     event.key.keysym.mod)) {
+                    break;
+                })
+            break;
+        case SDL_KEYUP:
+            FOR_ITH(
+                _iKeyListener,
+                if (_iKeyListener[i] &&
+                    !_dKeyListener[i]) if (_iKeyListener[i]->keyUp(event.key.keysym.sym,
+                                                                   event.key.keysym.mod)) {
+                    break;
+                })
+            break;
+        case SDL_TEXTINPUT:
+            FOR_ITH(
+                _iTextListener,
+                if (_iTextListener[i] && !_dTextListener[i]) if (_iTextListener[i]->textInput(
+                                                                     event.text.text)) { break; })
+            break;
+        case SDL_QUIT:
+            _running = false;
+            return;
+        default:
+            break;
         }
+    }
 
-        uint32_t tick = SDL_GetTicks();
-        deltaTicks += (tick - lastTick);
-        lastTick = tick;
-        if (tick > fpsTime + 100) {
-            if (_iApplication) {
-                fpsAcc = fpsAcc * 0.5f + fpsCounter * 5.0f;
-                _iApplication->fps(fpsAcc);
-                fpsCounter = 0;
-            }
-            fpsTime = fpsTime + 100;
+    uint32_t tick = SDL_GetTicks();
+    deltaTicks += (tick - lastTick);
+    lastTick = tick;
+    if (tick > fpsTime + 100) {
+        if (_iWindowApp) {
+            fpsAcc = fpsAcc * 0.5f + fpsCounter * 5.0f;
+            _iWindowApp->fps(fpsAcc);
+            fpsCounter = 0;
         }
-        bool updated = false;
-        while (deltaTicks >= PERIOD_TIME_MS) {
-            if (_iApplication->update(DELTA_TIME_S)) {
-                updated = true;
-            }
-            deltaTicks -= PERIOD_TIME_MS;
-            Time::increment(Time::fromMilliseconds(PERIOD_TIME_MS));
+        fpsTime = fpsTime + 100;
+    }
+    bool updated = false;
+    while (deltaTicks >= PERIOD_TIME_MS) {
+        if (_iWindowApp->update(DELTA_TIME_S)) {
+            updated = true;
         }
-        if (updated) {
-            _iApplication->draw();
-            ++fpsCounter;
-            SDL_GL_SwapWindow(_window);
-        }
+        deltaTicks -= PERIOD_TIME_MS;
+        Time::increment(Time::fromMilliseconds(PERIOD_TIME_MS));
+    }
+    if (updated) {
+        _iWindowApp->draw();
+        ++fpsCounter;
+        SDL_GL_SwapWindow(_window);
+    }
+}
+
+void window::loop_forever() {
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop(_mainLoop, -1, 1);
+#else
+    while (_running) {
+        _mainLoop();
         SDL_Delay(1);
     }
+#endif
     SDL_GL_DeleteContext(_glContext);
+    SDL_DestroyWindow(_window);
     SDL_Quit();
 }
 
-void window::registerEngine(window::IEngine *iApplication) { _iApplication = iApplication; }
+void window::registerWindowApp(window::IWindowApp *iWindowApp) { _iWindowApp = iWindowApp; }
 
 #define __WBINDER(symbol)                                                                          \
     void window::register##symbol(I##symbol *i##symbol) {                                          \

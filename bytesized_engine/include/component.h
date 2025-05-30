@@ -1,8 +1,8 @@
 #pragma once
 
-#include "assets.h"
 #include "ecs.h"
 #include "geom_primitive.h"
+#include "gpu.h"
 #include "trs.h"
 #include <functional>
 #include <glm/glm.hpp>

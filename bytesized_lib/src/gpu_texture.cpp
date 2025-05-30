@@ -1,4 +1,4 @@
-#include "texture.h"
+#include "gpu_texture.h"
 
 #include "opengl.h"
 #include <cstdio>
@@ -14,7 +14,8 @@ void gpu::Texture_create(const gpu::Texture &texture, const uint8_t *data, uint3
     GLenum internalFormat;
     switch (channels) {
     case ChannelSetting::R:
-        format = internalFormat = GL_RED;
+        format = internalFormat = GL_R8;
+        format = GL_RED;
         break;
     case ChannelSetting::RGB:
         format = internalFormat = GL_RGB;

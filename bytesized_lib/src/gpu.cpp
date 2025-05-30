@@ -11,39 +11,52 @@
 #include <glm/gtx/string_cast.hpp>
 #include <unordered_set>
 
-#define GPU__VERTEXARRAY_COUNT 100
-#define GPU__VERTEXBUFFER_COUNT 1000
-#define GPU__TEXTURE_COUNT 100
-#define GPU__MATERIAL_COUNT 100
-#define GPU__UBO_COUNT 10
-#define GPU__MESH_COUNT 100
-#define GPU__PRIMITIVE_COUNT 100
-#define GPU__NODE_COUNT 200
-#define GPU__SCENE_COUNT 10
-#define GPU__SKIN_COUNT 10
-#define GPU__SHADER_COUNT 30
-#define GPU__SHADERPROGRAM_COUNT 20
-#define GPU__TEXT_COUNT 10
-#define GPU__FRAMEBUFFER_COUNT 10
-#define GPU__ANIMATION__COUNT 50
-#define GPU___PLAYBACK_COUNT 10
+static recycler<gpu::VertexArray, BYTESIZED_VERTEXARRAY_COUNT> VERTEXARRAYS = {};
+static recycler<uint32_t, BYTESIZED_VERTEXBUFFER_COUNT> VERTEXBUFFERS = {};
+static recycler<gpu::Texture, BYTESIZED_TEXTURE_COUNT> TEXTURES = {};
+static recycler<gpu::Material, BYTESIZED_MATERIAL_COUNT> MATERIALS = {};
+static recycler<gpu::UniformBuffer, BYTESIZED_UNIFORMBUFFER_COUNT> UBOS = {};
+static recycler<gpu::Mesh, BYTESIZED_MESH_COUNT> MESHES = {};
+static recycler<gpu::Primitive, BYTESIZED_PRIMITIVE_COUNT> PRIMITIVES = {};
+static recycler<gpu::Node, BYTESIZED_NODE_COUNT> NODES = {};
+static recycler<gpu::Scene, BYTESIZED_SCENE_COUNT> SCENES = {};
+static recycler<gpu::Shader, BYTESIZED_SHADER_COUNT> SHADERS = {};
+static recycler<gpu::ShaderProgram, BYTESIZED_SHADERPROGRAM_COUNT> SHADERPROGRAMS = {};
+static recycler<gpu::Text, BYTESIZED_TEXT_COUNT> TEXTS = {};
+static recycler<gpu::Framebuffer, BYTESIZED_FRAMEBUFFER_COUNT> FRAMEBUFFERS = {};
+#ifdef BYTESIZED_USE_SKINNING
+static recycler<gpu::Skin, BYTESIZED_SKIN_COUNT> SKINS = {};
+static recycler<gpu::Animation, BYTESIZED_ANIMATION_COUNT> ANIMATIONS = {};
+static recycler<gpu::Playback, BYTESIZED_PLAYBACK_COUNT> PLAYBACKS = {};
+#endif
 
-static recycler<uint32_t, GPU__VERTEXARRAY_COUNT> VAOS = {};
-static recycler<uint32_t, GPU__VERTEXBUFFER_COUNT> VBOS = {};
-static recycler<gpu::Texture, GPU__TEXTURE_COUNT> TEXTURES = {};
-static recycler<gpu::Material, GPU__MATERIAL_COUNT> MATERIALS = {};
-static recycler<gpu::UniformBuffer, GPU__UBO_COUNT> UBOS = {};
-static recycler<gpu::Mesh, GPU__MESH_COUNT> MESHES = {};
-static recycler<gpu::Primitive, GPU__PRIMITIVE_COUNT> PRIMITIVES = {};
-static recycler<gpu::Node, GPU__NODE_COUNT> NODES = {};
-static recycler<gpu::Scene, GPU__SCENE_COUNT> SCENES = {};
-static recycler<gpu::Skin, GPU__SKIN_COUNT> SKINS = {};
-static recycler<gpu::Shader, GPU__SHADER_COUNT> SHADERS = {};
-static recycler<gpu::ShaderProgram, GPU__SHADERPROGRAM_COUNT> SHADERPROGRAMS = {};
-static recycler<gpu::Text, GPU__TEXT_COUNT> TEXTS = {};
-static recycler<gpu::Framebuffer, GPU__FRAMEBUFFER_COUNT> FRAMEBUFFERS = {};
-static recycler<gpu::Animation, GPU__ANIMATION__COUNT> ANIMATIONS = {};
-static recycler<gpu::Playback, GPU___PLAYBACK_COUNT> PLAYBACKS = {};
+#define PRINT_USAGE(var)                                                                           \
+    do {                                                                                           \
+        printf("%s: %zu / %zu\n", #var, var.count(), var.size());                                  \
+    } while (0);
+
+void gpu::printAllocations() {
+    printf("\nGPU allocations:\n");
+    PRINT_USAGE(VERTEXARRAYS);
+    PRINT_USAGE(VERTEXBUFFERS);
+    PRINT_USAGE(TEXTURES);
+    PRINT_USAGE(MATERIALS);
+    PRINT_USAGE(UBOS);
+    PRINT_USAGE(MESHES);
+    PRINT_USAGE(PRIMITIVES);
+    PRINT_USAGE(NODES);
+    PRINT_USAGE(SCENES);
+    PRINT_USAGE(SHADERS);
+    PRINT_USAGE(SHADERPROGRAMS);
+    PRINT_USAGE(TEXTS);
+    PRINT_USAGE(FRAMEBUFFERS);
+#ifdef BYTESIZED_USE_SKINNING
+    PRINT_USAGE(SKINS);
+    PRINT_USAGE(ANIMATIONS);
+    PRINT_USAGE(PLAYBACKS);
+#endif
+    printf("-------------------------\n\n");
+}
 
 static gpu::Material *_builtinMaterials[gpu::MATERIAL_COUNT];
 static gpu::Material *_overrideMaterial{nullptr};
@@ -69,14 +82,17 @@ template <std::size_t W, std::size_t H, std::size_t C> struct StaticTexture {
 };
 
 void gpu::allocate() {
-    glGenVertexArrays(GPU__VERTEXARRAY_COUNT, VAOS.data());
-    glGenBuffers(GPU__VERTEXBUFFER_COUNT, VBOS.data());
-    glGenTextures(GPU__TEXTURE_COUNT, (GLuint *)TEXTURES.data());
-    LOG_INFO("GPU recyclers RAM usage: %.1f KB",
-             (sizeof(VAOS) + sizeof(VBOS) + sizeof(TEXTURES) + sizeof(MATERIALS) + sizeof(UBOS) +
-              sizeof(MESHES) + sizeof(PRIMITIVES) + sizeof(NODES) + sizeof(SCENES) + sizeof(SKINS) +
-              sizeof(SHADERS) + sizeof(SHADERPROGRAMS)) *
-                 1e-3f);
+    glGenVertexArrays(BYTESIZED_VERTEXARRAY_COUNT, (uint32_t *)VERTEXARRAYS.data());
+    glGenBuffers(BYTESIZED_VERTEXBUFFER_COUNT, VERTEXBUFFERS.data());
+    glGenTextures(BYTESIZED_TEXTURE_COUNT, (GLuint *)TEXTURES.data());
+    size_t allocatedBytes =
+        (sizeof(VERTEXARRAYS) + sizeof(VERTEXBUFFERS) + sizeof(TEXTURES) + sizeof(MATERIALS) +
+         sizeof(UBOS) + sizeof(MESHES) + sizeof(PRIMITIVES) + sizeof(NODES) + sizeof(SCENES) +
+         sizeof(SHADERS) + sizeof(SHADERPROGRAMS) + sizeof(TEXTS) + sizeof(FRAMEBUFFERS));
+#ifdef BYTESIZED_USE_SKINNING
+    allocatedBytes += sizeof(SKINS) + sizeof(ANIMATIONS) + sizeof(PLAYBACKS);
+#endif
+    LOG_INFO("GPU recyclers RAM usage: %.1f KB", allocatedBytes * 1e-3f);
 
     uint8_t onePixel[]{0xFF, 0xFF, 0xFF};
     _blankDiffuse = createTexture(onePixel, 1, 1, ChannelSetting::RGB, GL_UNSIGNED_BYTE);
@@ -150,9 +166,9 @@ void gpu::allocate() {
 }
 
 void gpu::dispose() {
-    glDeleteVertexArrays(GPU__VERTEXARRAY_COUNT, VAOS.data());
-    glDeleteBuffers(GPU__VERTEXBUFFER_COUNT, VBOS.data());
-    glDeleteTextures(GPU__TEXTURE_COUNT, (GLuint *)TEXTURES.data());
+    glDeleteVertexArrays(BYTESIZED_VERTEXARRAY_COUNT, (uint32_t *)VERTEXARRAYS.data());
+    glDeleteBuffers(BYTESIZED_VERTEXBUFFER_COUNT, VERTEXBUFFERS.data());
+    glDeleteTextures(BYTESIZED_TEXTURE_COUNT, (GLuint *)TEXTURES.data());
     for (size_t i{0}; i < SHADERS.count(); ++i) {
         glDeleteShader(SHADERS[i].id);
     }
@@ -186,15 +202,15 @@ void gpu::Framebuffer::createRenderBufferDS(uint32_t width, uint32_t height) {
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
 }
-void gpu::Framebuffer::checkStatus() {
+void gpu::Framebuffer::checkStatus(const char *label) {
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        LOG_ERROR("Framebuffer is not complete: %d", id);
+        LOG_ERROR("Framebuffer '%s' is not complete: %d", label, id);
     }
 }
 void gpu::Framebuffer::unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
 
-uint32_t *gpu::createVAO() { return VAOS.acquire(); }
-uint32_t *gpu::createVBO() { return VBOS.acquire(); }
+gpu::VertexArray *gpu::createVertexArray() { return VERTEXARRAYS.acquire(); }
+uint32_t *gpu::createVertexBuffer() { return VERTEXBUFFERS.acquire(); }
 
 gpu::Mesh *gpu::createMesh() {
     gpu::Mesh *mesh = MESHES.acquire();
@@ -211,28 +227,28 @@ gpu::Primitive *gpu::createPrimitive(const glm::vec3 *positions, const glm::vec3
                                      const glm::vec2 *uvs, size_t vertex_count,
                                      const uint16_t *indices, size_t index_count) {
     gpu::Primitive *prim = PRIMITIVES.acquire();
-    prim->vao = VAOS.acquire();
-    glBindVertexArray(*prim->vao);
+    prim->vao = VERTEXARRAYS.acquire();
+    prim->vao->bind();
 
-    uint32_t *vbo = prim->vbos.emplace_back(VBOS.acquire());
+    uint32_t *vbo = prim->vbos.emplace_back(VERTEXBUFFERS.acquire());
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
     glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec3), positions, GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 
-    vbo = prim->vbos.emplace_back(VBOS.acquire());
+    vbo = prim->vbos.emplace_back(VERTEXBUFFERS.acquire());
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
     glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec3), normals, GL_STATIC_DRAW);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(1);
 
-    vbo = prim->vbos.emplace_back(VBOS.acquire());
+    vbo = prim->vbos.emplace_back(VERTEXBUFFERS.acquire());
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
     glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec2), uvs, GL_STATIC_DRAW);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(2);
 
-    prim->ebo = VBOS.acquire();
+    prim->ebo = VERTEXBUFFERS.acquire();
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *prim->ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_count * sizeof(uint16_t), indices, GL_STATIC_DRAW);
     prim->count = index_count;
@@ -283,7 +299,7 @@ bool gpu::Shader_compile(const gpu::Shader &shader, const char *src) {
         glGetShaderiv(shader.id, GL_INFO_LOG_LENGTH, &length);
         GLint n = length < _charbuf_len ? length : _charbuf_len;
         glGetShaderInfoLog(shader.id, length, &n, _charbuf);
-        printf("%.*s\n", n, _charbuf);
+        printf("%s\n %.*s\n", src, n, _charbuf);
         return false;
     }
     return true;
@@ -319,14 +335,18 @@ gpu::Texture *gpu::createTextureFromFile(const char *path, bool flip) {
     int iw, ih, ic;
     stbi_set_flip_vertically_on_load(flip);
     const uint8_t *idata = stbi_load(path, &iw, &ih, &ic, 0);
-    return createTexture(idata, iw, ih, static_cast<ChannelSetting>(ic), GL_UNSIGNED_BYTE);
+    auto *tex = createTexture(idata, iw, ih, static_cast<ChannelSetting>(ic), GL_UNSIGNED_BYTE);
+    stbi_image_free((void *)idata);
+    return tex;
 }
 
 gpu::Texture *gpu::createTextureFromMem(const uint8_t *addr, uint32_t len, bool flip) {
     int iw, ih, ic;
     stbi_set_flip_vertically_on_load(flip);
     const uint8_t *idata = stbi_load_from_memory((uint8_t *)addr, len, &iw, &ih, &ic, 0);
-    return createTexture(idata, iw, ih, static_cast<ChannelSetting>(ic), GL_UNSIGNED_BYTE);
+    auto *tex = createTexture(idata, iw, ih, static_cast<ChannelSetting>(ic), GL_UNSIGNED_BYTE);
+    stbi_image_free((void *)idata);
+    return tex;
 }
 gpu::Texture *gpu::createTexture(const library::Texture &texture) {
     return createTextureFromMem((uint8_t *)texture.image->view->data(), texture.image->view->length,
@@ -371,9 +391,9 @@ gpu::Text *gpu::createText(const bdf::Font &font, const char *txt, bool center) 
     text->node->hidden = false;
     gpu::Primitive *primitive = PRIMITIVES.acquire();
     text->node->mesh->primitives.emplace_back(primitive, mat);
-    primitive->vao = VAOS.acquire();
-    primitive->vbos.emplace_back(VBOS.acquire());
-    primitive->ebo = VBOS.acquire();
+    primitive->vao = VERTEXARRAYS.acquire();
+    primitive->vbos.emplace_back(VERTEXBUFFERS.acquire());
+    primitive->ebo = VERTEXBUFFERS.acquire();
     text->bdfFont = &font;
     text->init();
     text->setText(txt, center);
@@ -458,14 +478,14 @@ static gpu::Mesh *_createMesh(const library::Mesh &libraryMesh) {
                                       ? gpu::createMaterial(*libraryPrimitive.material)
                                       : &MATERIALS[0]);
         const_cast<library::Primitive &>(libraryPrimitive).gpuInstance = primitive;
-        primitive->vao = VAOS.acquire();
-        glBindVertexArray(*primitive->vao);
+        primitive->vao = VERTEXARRAYS.acquire();
+        primitive->vao->bind();
         for (size_t j{0}; j < library::Primitive::Attribute::COUNT; ++j) {
             const library::Accessor *libraryAttr = libraryPrimitive.attributes[j];
             if (libraryAttr == nullptr) {
                 continue;
             }
-            uint32_t vbo = *primitive->vbos.emplace_back(VBOS.acquire());
+            uint32_t vbo = *primitive->vbos.emplace_back(VERTEXBUFFERS.acquire());
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
             glBufferData(GL_ARRAY_BUFFER, libraryAttr->bufferView->length,
                          libraryAttr->bufferView->data(), GL_STATIC_DRAW);
@@ -481,7 +501,7 @@ static gpu::Mesh *_createMesh(const library::Mesh &libraryMesh) {
             glEnableVertexAttribArray(j);
         }
         if (libraryPrimitive.indices) {
-            primitive->ebo = VBOS.acquire();
+            primitive->ebo = VERTEXBUFFERS.acquire();
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *primitive->ebo);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, libraryPrimitive.indices->bufferView->length,
                          libraryPrimitive.indices->bufferView->buffer->data +
@@ -516,7 +536,9 @@ gpu::Node *gpu::createNode(const gpu::Node &other) {
     node->rotation = other.rotation.data();
     node->scale = other.scale.data();
     node->hidden = other.hidden;
+#ifdef BYTESIZED_USE_SKINNING
     assert(other.skin == nullptr);
+#endif
     return node;
 }
 
@@ -543,27 +565,31 @@ gpu::Node *gpu::createNode(const library::Node &libraryNode) {
     node->hidden = false;
     for (library::Node *libraryChild : libraryNode.children) {
         node->children.emplace_back(createNode(*libraryChild))->setParent(node);
+#ifdef BYTESIZED_USE_SKINNING
         if (libraryChild->skin) {
             node->skin = SKINS.acquire();
             node->skin->librarySkin = libraryChild->skin;
         }
+#endif
     }
+#ifdef BYTESIZED_USE_SKINNING
     if (node->skin) {
         for (library::Node *joint : node->skin->librarySkin->joints) {
             node->skin->joints.emplace_back(node->childByName(joint->name.c_str()));
         }
     }
+#endif
     return node;
 };
 
 static void freeMesh(gpu::Mesh *mesh) {
     for (auto &[primitive, material] : mesh->primitives) {
 
-        VAOS.free(primitive->vao);
+        VERTEXARRAYS.free(primitive->vao);
         for (uint32_t *vbo : primitive->vbos) {
-            VBOS.free(vbo);
+            VERTEXBUFFERS.free(vbo);
         }
-        VBOS.free(primitive->ebo);
+        VERTEXBUFFERS.free(primitive->ebo);
         primitive->vbos.clear();
         /*if (material) {
             bool onlyUserMaterial{true};
@@ -616,6 +642,7 @@ void gpu::freeNode(gpu::Node *node) {
         const_cast<library::Node *>(node->libraryNode)->gpuInstance = nullptr;
     }
     node->libraryNode = nullptr;
+#ifdef BYTESIZED_USE_SKINNING
     if (node->skin) {
         for (auto *anim : node->skin->animations) {
             gpu::freeAnimation(anim);
@@ -630,6 +657,7 @@ void gpu::freeNode(gpu::Node *node) {
         SKINS.free(node->skin);
         node->skin = nullptr;
     }
+#endif
     for (Node *child : node->children) {
         freeNode(child);
     }
@@ -692,13 +720,20 @@ void gpu::bindMaterial(gpu::ShaderProgram *shaderProgram, gpu::Material *materia
 }
 
 void gpu::Primitive::render() {
-    glBindVertexArray(*vao);
+    vao->bind();
     if (ebo) {
         glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, NULL);
     } else {
         glDrawArrays(GL_TRIANGLES, 0, count);
     }
-    glBindVertexArray(0);
+    vao->unbind();
+}
+
+void gpu::UniformBuffer::bindShader(gpu::ShaderProgram *shader) {
+    bind();
+    bindBlock(shader, label);
+    bindBufferBase();
+    unbind();
 }
 
 void gpu::UniformBuffer::bindShaders(std::initializer_list<gpu::ShaderProgram *> shaders) {
@@ -742,14 +777,15 @@ void gpu::LightBlock_setLightColor(const Color &high, const Color &low, const Co
 gpu::UniformBuffer *gpu::builtinUBO(BuiltinUBO bultinUBO) { return &UBOS.at(bultinUBO); }
 void gpu::createBuiltinUBOs() {
     static const char *cameraBlockLabel = "CameraBlock";
-    static const char *skinBlockLabel = "SkinBlock";
-    // static const char *guiBlockLabel = "GUIBlock";
     createUniformBuffer(UBO_CAMERA, cameraBlockLabel, sizeof(gpu::CameraBlock), &cameraBlock);
-    createUniformBuffer(UBO_SKINNING, skinBlockLabel, sizeof(gpu::SkinBlock), skinBlock.bones);
     createUniformBuffer(UBO_LIGHT, "LightBlock", sizeof(gpu::LightBlock), &lightBlock);
-    // createUniformBuffer(UBO_GUI, guiBlockLabel, sizeof(gpu::SkinBlock), &cameraBlock);
+#ifdef BYTESIZED_USE_SKINNING
+    static const char *skinBlockLabel = "SkinBlock";
+    createUniformBuffer(UBO_SKINNING, skinBlockLabel, sizeof(gpu::SkinBlock), skinBlock.bones);
+#endif
 }
 
+#ifdef BYTESIZED_USE_SKINNING
 static void _updateBonesArray(gpu::Node *node) {
     const glm::mat4 globalWorldInverse = glm::inverse(node->model());
     for (size_t j{0}; j < node->skin->joints.size() && j < gpu::MAX_BONES; ++j) {
@@ -757,23 +793,28 @@ static void _updateBonesArray(gpu::Node *node) {
                              node->skin->librarySkin->inverseBindMatrices.at(j);
     }
 }
+#endif
 
 void gpu::Node::render(ShaderProgram *shaderProgram) {
     if (parent() == nullptr && !valid()) {
         invalidateRecursive(this);
     }
+#ifdef BYTESIZED_USE_SKINNING
     if (skin) {
         gpu::UniformBuffer *ubo = gpu::builtinUBO(gpu::UBO_SKINNING);
         _updateBonesArray(this);
         ubo->bind();
         ubo->bufferData(sizeof(skinBlock), &skinBlock);
     }
+#endif
     for (gpu::Node *child : children) {
         child->render(shaderProgram);
     }
+#ifndef __EMSCRIPTEN__
     if (wireframe) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     }
+#endif
     if (!hidden && mesh && !mesh->primitives.empty()) {
         shaderProgram->uniforms.at("u_model") << model();
         for (auto &[primitive, material] : mesh->primitives) {
@@ -781,9 +822,11 @@ void gpu::Node::render(ShaderProgram *shaderProgram) {
             primitive->render();
         }
     }
+#ifndef __EMSCRIPTEN__
     if (wireframe) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
+#endif
 }
 
 gpu::Node *gpu::Node::childByName(const char *name) {
@@ -848,7 +891,7 @@ gpu::Node *gpu::Scene::nodeByName(const char *name) {
 gpu::UniformBuffer *gpu::createUniformBuffer(uint32_t bindingPoint, const char *label,
                                              uint32_t length, void *data) {
     gpu::UniformBuffer *ubo = UBOS.acquire();
-    ubo->id = VBOS.acquire();
+    ubo->id = VERTEXBUFFERS.acquire();
     ubo->bindingPoint = bindingPoint;
     ubo->label = label;
     ubo->bind();
@@ -861,7 +904,7 @@ void gpu::freeUniformBuffer(gpu::UniformBuffer *ubo) {
     ubo->bind();
     glBufferData(GL_UNIFORM_BUFFER, 0, NULL, GL_STATIC_DRAW);
     ubo->unbind();
-    VBOS.free(ubo->id);
+    VERTEXBUFFERS.free(ubo->id);
     ubo->bindingPoint = 0;
     UBOS.free(ubo);
 }
@@ -887,9 +930,81 @@ void gpu::UniformBuffer::bufferSubData(uint32_t offset, uint32_t length, void *d
     glBufferSubData(GL_UNIFORM_BUFFER, offset, length, data);
 }
 
-gpu::Shader *gpu::createShader(uint32_t type, const char *src) {
+struct SharedSource {
+    const char *name;
+    const char *src;
+};
+static const size_t SHARED_SOURCES_MAX = 10;
+static SharedSource _sharedSources[SHARED_SOURCES_MAX];
+void gpu::createSharedSource(const char *name, const char *src) {
+    for (size_t i{0}; i < SHARED_SOURCES_MAX; ++i) {
+        if (_sharedSources[i].name == nullptr) {
+            _sharedSources[i].name = name;
+            _sharedSources[i].src = src;
+            return;
+        }
+    }
+    LOG_ERROR("Failed to create shared source, array is full.");
+}
+
+const char *getSharedSource(const char *name) {
+    for (size_t i{0}; i < SHARED_SOURCES_MAX; ++i) {
+        if (_sharedSources[i].name == nullptr) {
+            continue;
+        }
+        if (strcmp(_sharedSources[i].name, name) == 0) {
+            return _sharedSources[i].src;
+        }
+    }
+    return nullptr;
+}
+
+gpu::Shader *gpu::createShader(uint32_t type, const char *src,
+                               const std::unordered_set<std::string> &defines) {
     gpu::Shader *shader = SHADERS.acquire();
     shader->id = glCreateShader(type);
+
+    bool useShaderExtension{!defines.empty()};
+    for (size_t i{0}; i < 100'000 && !useShaderExtension; ++i) {
+        if (src[i] == '#') {
+            if (strncmp(src + i, "#include", sizeof("#include") - 1) == 0) {
+                useShaderExtension = true;
+                break;
+            }
+        } else if (src[i] == '\0') {
+            break;
+        }
+    }
+    std::string str;
+    if (useShaderExtension) {
+        str.assign(src);
+
+        if (!defines.empty()) {
+            size_t i = str.find("\n");
+            const std::string version = str.substr(0, i + 1);
+            str = str.substr(i);
+            for (const auto &define : defines) {
+                str = "#define " + define + "\n" + str;
+            }
+            str = version + str;
+        }
+
+        size_t a = str.find("#include");
+        while (a != std::string::npos) {
+            size_t b0 = str.find('"', a);
+            size_t b1 = str.find('"', b0 + 1);
+            std::string name = str.substr(b0 + 1, (b1 - b0 - 1));
+            const char *shared = getSharedSource(name.c_str());
+            if (shared == nullptr) {
+                LOG_WARN("Failed to find SharedSource: %s\n", name.c_str());
+            }
+            str.replace(a, b1 - a + 1, shared ? shared : "");
+            a = str.find("#include", a + 1);
+        }
+        src = str.c_str();
+        // printf("\n%s\n", src);
+    }
+
     if (!Shader_compile(*shader, src)) {
         glDeleteShader(shader->id);
         SHADERS.free(shader);
@@ -935,251 +1050,85 @@ void gpu::freeShaderProgram(ShaderProgram *shaderProgram) {
     SHADERPROGRAMS.free(shaderProgram);
 }
 
-#if 0
-    prim->vao = VAOS.acquire();
-    glBindVertexArray(*prim->vao);
-    uint32_t *vbo = prim->vbos.emplace_back(VBOS.acquire());
-    prim->ebo = VBOS.acquire();
-    glBindBuffer(GL_ARRAY_BUFFER, *vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(glm::vec3), vertices, GL_STATIC_DRAW);
+gpu::Collection::Collection(const library::Collection &collection) { create(collection); }
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *prim->ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_count * sizeof(uint16_t), indices, GL_STATIC_DRAW);
-    prim->count = index_count;
+void gpu::Collection::create(const library::Collection &collection) {
+    scene = gpu::createScene(*collection.scene);
+    LOG_INFO("Collection %s: #materials=%u #meshes=%u #nodes=%u #textures=%u",
+             collection.scene->name.c_str(), collection.materials_count, collection.meshes_count,
+             collection.nodes_count, collection.textures_count);
+#ifdef BYTESIZED_USE_SKINNING
+    for (size_t i{0}; i < collection.animations_count; ++i) {
+        animations.emplace_back(gpu::createAnimation(collection.animations[i], nullptr));
+    }
+    if (!animations.empty()) {
+        if (auto idleAnim = animationByName("Idle")) {
+            idleAnim->start();
+        } else {
+            animations.front()->start();
+        }
+    }
 #endif
 
-gpu::Animation *gpu::Skin::findAnimation(const char *name) {
-    for (auto anim : animations) {
-        if (anim->name.compare(name) == 0) {
-            return anim;
+    assert(scene->libraryScene != nullptr);
+    assert(scene->libraryScene->gpuInstance == scene);
+    for (gpu::Node *node : scene->nodes) {
+        assert(node->libraryNode);
+        assert(node->libraryNode->gpuInstance != nullptr);
+        assert(node->libraryNode->scene == scene->libraryScene);
+        assert(node->libraryNode->scene != nullptr);
+    }
+}
+
+#ifdef BYTESIZED_USE_SKINNING
+gpu::Animation *gpu::Collection::animationByName(const char *name) {
+    for (auto &animation : animations) {
+        if (animation->name.compare(name) == 0) {
+            return animation;
         }
     }
     return nullptr;
 }
+#endif
 
-gpu::Playback *gpu::Skin::playAnimation(const char *name) {
-    gpu::Animation *anim = findAnimation(name);
-    if (anim != playback->animation) {
-        playback->animation = anim;
-        playback->time = playback->animation->startTime;
-        for (auto &channel : anim->channels) {
-            gpu::Channel *ch = &channel.second.at(gpu::Animation::CH_TRANSLATION);
-            ch->current = ch->frames.begin();
-            ch = &channel.second.at(gpu::Animation::CH_ROTATION);
-            ch->current = ch->frames.begin();
-            ch = &channel.second.at(gpu::Animation::CH_SCALE);
-            ch->current = ch->frames.begin();
-        }
+const std::string &gpu::Collection::name() const {
+    if (scene && scene->libraryScene) {
+        return scene->libraryScene->name;
     }
-    return playback;
+    static const std::string noname{};
+    return noname;
 }
 
-gpu::Animation *gpu::createAnimation(const library::Animation &anim, gpu::Node *retargetNode) {
-    auto rval = ANIMATIONS.acquire();
-    rval->libraryAnimation = &anim;
-    rval->startTime = FLT_MAX;
-    rval->endTime = -FLT_MAX;
-    rval->looping = true;
-    for (size_t j{0}; j < 96; ++j) {
-        const auto &channel = anim.channels[j];
-        if (channel.type) {
-            float *fp = (float *)channel.sampler->input->data();
-            glm::vec3 *v3p = (glm::vec3 *)channel.sampler->output->data();
-            glm::vec4 *v4p = (glm::vec4 *)channel.sampler->output->data();
-            gpu::Node *targetNode = (gpu::Node *)channel.targetNode->gpuInstance;
-            if (retargetNode) {
-                targetNode = retargetNode->childByName(channel.targetNode->name.c_str());
-                assert(targetNode);
-            }
-            rval->name = anim.name;
-            switch (channel.type) {
-            case library::Channel::TRANSLATION:
-                rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.resize(
-                    channel.sampler->input->count);
-                rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].current =
-                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.begin();
-                for (size_t k{0}; k < channel.sampler->input->count; ++k) {
-                    rval->startTime = std::min(rval->startTime, fp[k]);
-                    rval->endTime = std::max(rval->endTime, fp[k]);
-                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).time =
-                        fp[k];
-                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).v3.x =
-                        v3p[k].x;
-                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).v3.y =
-                        v3p[k].y;
-                    rval->channels[targetNode][gpu::Animation::CH_TRANSLATION].frames.at(k).v3.z =
-                        v3p[k].z;
-                }
-                break;
-            case library::Channel::ROTATION:
-                rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.resize(
-                    channel.sampler->input->count);
-                rval->channels[targetNode][gpu::Animation::CH_ROTATION].current =
-                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.begin();
-                for (size_t k{0}; k < channel.sampler->input->count; ++k) {
-                    rval->startTime = std::min(rval->startTime, fp[k]);
-                    rval->endTime = std::max(rval->endTime, fp[k]);
-                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).time =
-                        fp[k];
-                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.x =
-                        v4p[k].x;
-                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.y =
-                        v4p[k].y;
-                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.z =
-                        v4p[k].z;
-                    rval->channels[targetNode][gpu::Animation::CH_ROTATION].frames.at(k).q.w =
-                        v4p[k].w;
-                }
-                break;
-            case library::Channel::SCALE:
-                rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.resize(
-                    channel.sampler->input->count);
-                rval->channels[targetNode][gpu::Animation::CH_SCALE].current =
-                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.begin();
-                for (size_t k{0}; k < channel.sampler->input->count; ++k) {
-                    rval->startTime = std::min(rval->startTime, fp[k]);
-                    rval->endTime = std::max(rval->endTime, fp[k]);
-                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).time = fp[k];
-                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).v3.x =
-                        v3p[k].x;
-                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).v3.y =
-                        v3p[k].y;
-                    rval->channels[targetNode][gpu::Animation::CH_SCALE].frames.at(k).v3.z =
-                        v3p[k].z;
-                }
-                break;
-            case library::Channel::NONE:
-                LOG_ERROR("Unknown animation channel");
-                break;
-            }
-        }
+void gpu::renderScreen() {
+    // clang-format off
+    static const float screen_vertices[] = {
+        -1.0f, -1.0f, 0.0f, 0.0f,
+        +1.0f, -1.0f, 1.0f, 0.0f,
+        -1.0f, +1.0f, 0.0f, 1.0f,
+        +1.0f, +1.0f, 1.0f, 1.0f,
+    };
+    static const uint16_t screen_indices[] = {
+        0, 1, 2,
+        1, 3, 2
+    };
+    // clang-format off
+    static VertexArray *vao{nullptr};
+    static uint32_t *vbo{nullptr};
+    static uint32_t *ebo{nullptr};
+    if (vao == nullptr) {
+        vao = createVertexArray();
+        vao->bind();
+        vbo = createVertexBuffer();
+        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(screen_vertices), screen_vertices,
+                     GL_STATIC_DRAW);
+        ebo = createVertexBuffer();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(screen_indices), screen_indices,
+                     GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
     }
-    return rval;
-}
-
-void gpu::freeAnimation(Animation *animation) {
-    animation->startTime = 0;
-    animation->endTime = 0;
-    animation->name = {};
-    animation->channels.clear();
-    animation->libraryAnimation = nullptr;
-    animation->looping = true;
-    ANIMATIONS.free(animation);
-}
-
-void gpu::Animation::start() {
-    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
-        if (PLAYBACKS[i].animation == this) {
-            return;
-        }
-    }
-    auto playback = PLAYBACKS.acquire();
-    playback->animation = this;
-    playback->paused = false;
-    playback->time = 0.0f;
-}
-
-void gpu::Animation::stop() {
-    gpu::Playback *playback{nullptr};
-    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
-        if (PLAYBACKS[i].animation == this) {
-            playback = PLAYBACKS.data() + 1;
-            break;
-        }
-    }
-    if (playback) {
-        playback->animation = nullptr;
-        PLAYBACKS.free(playback);
-    }
-}
-
-gpu::Playback *gpu::createPlayback(gpu::Animation *animation) {
-    gpu::Playback *handle = PLAYBACKS.acquire();
-    handle->animation = animation;
-    return handle;
-};
-
-void gpu::freePlayback(gpu::Playback *playback) {
-    playback->animation = nullptr;
-    playback->paused = false;
-    playback->time = 0.0f;
-    PLAYBACKS.free(playback);
-};
-
-static inline gpu::Frame *getFrame(gpu::Channel &channel, float time);
-
-static constexpr bool _lerpBetweenKeyFrames = true;
-void gpu::animate(float dt) {
-    for (size_t i{0}; i < PLAYBACKS.count(); ++i) {
-        auto &playback = PLAYBACKS[i];
-        if (auto anim = playback.animation) {
-            if (playback.paused) {
-                continue;
-            }
-            for (auto &channel : anim->channels) {
-                gpu::Node *node = channel.first;
-                if (auto tframe = getFrame(channel.second.at(gpu::Animation::CH_TRANSLATION),
-                                           playback.time)) {
-                    if (_lerpBetweenKeyFrames) {
-                        node->translation =
-                            glm::mix(node->translation.data(), tframe->v3, 16.0f * dt);
-                    } else {
-                        node->translation = tframe->v3;
-                    }
-                }
-                if (auto rframe =
-                        getFrame(channel.second.at(gpu::Animation::CH_ROTATION), playback.time)) {
-                    if (_lerpBetweenKeyFrames) {
-                        node->rotation = glm::slerp(node->rotation.data(), rframe->q, 16.0f * dt);
-                    } else {
-                        node->rotation = rframe->q;
-                    }
-                }
-                if (auto sframe =
-                        getFrame(channel.second.at(gpu::Animation::CH_SCALE), playback.time)) {
-                    if (_lerpBetweenKeyFrames) {
-                        node->scale = glm::mix(node->scale.data(), sframe->v3, 16.0f * dt);
-                    } else {
-                        node->scale = sframe->v3;
-                    }
-                }
-            }
-            playback.time += dt;
-            if (playback.time > playback.animation->endTime) {
-                if (playback.animation->looping) {
-                    playback.time = playback.animation->startTime +
-                                    (playback.time - playback.animation->endTime);
-                } else {
-                    playback.time = std::min(playback.time, playback.animation->endTime);
-                }
-            }
-        }
-    }
-}
-
-static inline gpu::Frame *getFrame(gpu::Channel &channel, float time) {
-    if (channel.current == channel.frames.end()) {
-        if (channel.frames.empty()) {
-            return nullptr;
-        }
-        channel.current = channel.frames.begin();
-    }
-    while (channel.current->time < time) {
-        if (channel.current == (channel.frames.end() - 1)) {
-            break;
-        }
-        ++channel.current;
-    }
-    if (channel.current == (channel.frames.end() - 1)) {
-        float d1 = time - channel.frames.begin()->time;
-        float d2 = time - channel.current->time;
-        // check if we wrapped
-        if (glm::abs(d1) < glm::abs(d2)) {
-            channel.current = channel.frames.begin();
-        }
-    }
-    if (channel.current != channel.frames.end()) {
-        return &(*channel.current);
-    }
-    return nullptr;
+    vao->bind();
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
 }

@@ -1,11 +1,12 @@
 #pragma once
 
-#include "assets.h"
+#include "bdf.h"
 #include "camera.h"
 #include "clicknpick.h"
 #include "console.h"
 #include "editor.h"
 #include "geom_primitive.h"
+#include "gpu.h"
 #include "gui.h"
 #include "panel.h"
 #include "persist.h"
@@ -18,12 +19,14 @@ struct IGame {
     virtual void gameDraw() = 0;
 };
 
-struct IApplication {
+struct IEngineApp {
     virtual void appInit(struct Engine *engine) = 0;
-    virtual void appLoad(struct Engine *engine) = 0;
+    virtual void appLoad() = 0;
+    virtual void appUpdate(float dt) = 0;
+    virtual void appDraw() = 0;
 };
 
-struct Engine : public window::IEngine,
+struct Engine : public window::IWindowApp,
                 public window::IKeyListener,
                 public IConsole,
                 public IEditor,
@@ -31,12 +34,12 @@ struct Engine : public window::IEngine,
                 public persist::IPersist {
 
     Engine(Camera &camera_, Editor &editor_, Console &console_, int windowWidth, int windowHeight,
-           IApplication *iApp)
+           IEngineApp *iEngineApp)
         : _camera{camera_}, _editor{editor_}, _console{console_}, _clickNPick{this},
-          _windowWidth{windowWidth}, _windowHeight{windowHeight}, _iApp{iApp} {
+          _windowWidth{windowWidth}, _windowHeight{windowHeight}, _iEngineApp{iEngineApp} {
         _console.registerIConsole(this);
         _editor.registerIEditor(this);
-        window::registerEngine(this);
+        window::registerWindowApp(this);
         window::registerKeyListener(this);
         persist::registerIPersist(this);
     }
@@ -83,13 +86,14 @@ struct Engine : public window::IEngine,
     void unstage();
     void stage(const gpu::Scene &scene);
 
-    assets::Collection *addCollection(const library::Collection &collection);
-    assets::Collection *addGLB(const uint8_t *data);
-    assets::Collection *findCollection(const char *name);
+    gpu::Collection *addCollection(const library::Collection &collection);
+    gpu::Collection *addGLB(const uint8_t *data);
+    gpu::Collection *findCollection(const char *name);
 
-    void _openCollection(const assets::Collection &collection);
+    void _openCollection(const gpu::Collection &collection);
 
-    bool nodeClicked(gpu::Node *node) override;
+    void renderClickables(gpu::ShaderProgram *shaderProgram, uint8_t &id) override;
+    bool nodeClicked(size_t index) override;
 
     bool saveNodeInfo(gpu::Node *node, uint32_t &info) override;
     bool saveNodeExtra(gpu::Node *node, uint32_t &extra) override;
@@ -108,7 +112,7 @@ struct Engine : public window::IEngine,
     int _windowHeight;
     int _drawableWidth;
     int _drawableHeight;
-    IApplication *_iApp{nullptr};
+    IEngineApp *_iEngineApp{nullptr};
     IGame *_iGame{nullptr};
     gpu::ShaderProgram *shaderProgram;
     gpu::ShaderProgram *billboardProgram;
@@ -116,16 +120,19 @@ struct Engine : public window::IEngine,
     gpu::ShaderProgram *textProgram;
     gpu::ShaderProgram *uiProgram;
     gpu::ShaderProgram *uiTextProgram;
+    gpu::ShaderProgram *clickProgram;
+    gpu::ShaderProgram *clickAnimProgram;
     gpu::ShaderProgram *screenProgram;
     std::vector<gpu::Node *> nodes;
     std::vector<gpu::Node *> skinNodes;
     std::vector<gpu::Node *> textNodes;
     GUI gui;
-    std::list<assets::Collection> _collections;
+    std::list<gpu::Collection> _collections;
     persist::SaveFile _saveFile;
     bool _snapping{false};
     glm::mat4 perspectiveProjection;
     std::list<Vector> vectors;
+    bdf::Font *font;
 
   private:
     bool _openPanel(Panel *panel);

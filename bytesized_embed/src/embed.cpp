@@ -27,8 +27,19 @@ static std::string_view _loadFile(const char *path) {
         fwrite(data, sizeof(data) - 1, 1, file);                                                   \
     } while (0)
 
-void embed_to_cpp(const char *in_file, const char *out_file) {
+void embed_to_cpp(const char *in_file, const char *out_file, const ReplaceList &replaceList) {
     auto content = _loadFile(in_file);
+
+    std::string str;
+    if (!replaceList.empty()) {
+        str.assign(content);
+        for (const auto &replace : replaceList) {
+            while (str.find(replace.first) != std::string::npos) {
+                str.replace(str.find(replace.first), std::strlen(replace.first), replace.second);
+            }
+        }
+        content = str;
+    }
 
     in_file = dex::filename(in_file);
     std::string symbol_name{in_file};

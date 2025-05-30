@@ -27,6 +27,7 @@ template <typename T, std::size_t N> struct recycler {
 
     const T &operator[](size_t index) const { return _data[index]; }
     T &operator[](size_t index) { return _data[index]; }
+    size_t size() const { return N; }
     size_t count() const { return _data_count; };
     T *data() { return _data; }
 

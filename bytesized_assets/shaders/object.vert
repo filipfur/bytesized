@@ -22,6 +22,7 @@ void main()
     UV = aUV;
     vec3 p = vec3(u_model * vec4(aPos, 1.0));
     N = normalize(vec3(u_model * vec4(aNormal, 0.0)));
+    //C = vec3(u_view[3][0], u_view[3][1], u_view[3][2]); //u_cameraPos;
     C = u_cameraPos;
     P = p;
     gl_Position = u_projection * u_view * vec4(p, 1.0);

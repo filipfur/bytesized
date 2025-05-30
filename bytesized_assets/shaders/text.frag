@@ -1,5 +1,4 @@
 #version 330 core
-
 precision highp float;
 
 out vec4 FragColor;
@@ -14,7 +13,7 @@ in vec2 UV;
 void main()
 {
     vec4 diffuse = texture(u_diffuse, UV);
-    if(diffuse.r < 0.1) {
+    if(diffuse.r < 0.01) {
         FragColor = u_bg_color;
         return;
         //discard;

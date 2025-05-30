@@ -5,9 +5,9 @@ constexpr gpu::Sprite sprite;
 constexpr gpu::Billboard billboard;
 constexpr gpu::Plane<1, 1> plane;
 constexpr gpu::Cube cube;
-constexpr gpu::Sphere<16, 8> sphere;
-constexpr gpu::Sphere<16, 8> cylinder(gpu::Sphere<16, 8>::OPT_CYLINDER);
-constexpr gpu::Sphere<16, 8> cone(gpu::Sphere<16, 8>::OPT_CONE_A);
+static const gpu::Sphere<16, 8> sphere;
+static const gpu::Sphere<16, 8> cylinder(gpu::Sphere<16, 8>::OPT_CYLINDER);
+static const gpu::Sphere<16, 8> cone(gpu::Sphere<16, 8>::OPT_CONE_A);
 
 inline static void _setupAttribPosNorUV_Interleaved() {
     glEnableVertexAttribArray(0);
@@ -98,33 +98,11 @@ gpu::Primitive *gpu::builtinPrimitives(BuiltinPrimitives builtinPrimitives) {
     return (gpu::Primitive *)_builtinPrimitives[builtinPrimitives]->gpuInstance;
 }
 
-void gpu::renderScreen() {
-    static uint32_t *vao{nullptr};
-    static uint32_t *vbo{nullptr};
-    static uint32_t *ebo{nullptr};
-    if (vao == nullptr) {
-        vao = createVAO();
-        glBindVertexArray(*vao);
-        vbo = createVBO();
-        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::screen_vertices), gpu::screen_vertices,
-                     GL_STATIC_DRAW);
-        ebo = createVBO();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::screen_indices), gpu::screen_indices,
-                     GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
-    }
-    glBindVertexArray(*vao);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
-}
-
 void gpu::renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector) {
     if (vector.hidden) {
         return;
     }
-    static uint32_t *vao{nullptr};
+    static gpu::VertexArray *vao{nullptr};
     static uint32_t *vbo{nullptr};
     static uint32_t *ebo{nullptr};
     shaderProgram->use();
@@ -137,18 +115,18 @@ void gpu::renderVector(gpu::ShaderProgram *shaderProgram, Vector &vector) {
     shaderProgram->uniforms.at("u_model") << model;
     shaderProgram->uniforms.at("u_color") << vector.color.vec4();
     if (vao == nullptr) {
-        vao = createVAO();
-        glBindVertexArray(*vao);
-        vbo = createVBO();
+        vao = createVertexArray();
+        vao->bind();
+        vbo = createVertexBuffer();
         glBindBuffer(GL_ARRAY_BUFFER, *vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(gpu::vector_vertices), gpu::vector_vertices,
                      GL_STATIC_DRAW);
-        ebo = createVBO();
+        ebo = createVertexBuffer();
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(gpu::vector_indices), gpu::vector_indices,
                      GL_STATIC_DRAW);
         _setupAttribPosNorUV_Interleaved();
     }
-    glBindVertexArray(*vao);
+    vao->unbind();
     glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_SHORT, NULL);
 }

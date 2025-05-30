@@ -9,34 +9,38 @@
 #define GLB_CHUNK_TYPE_JSON 0x4E4F534A
 #define GLB_CHUNK_TYPE_BIN 0x004E4942
 
-#define LIBRARY__BUFFER_COUNT 50
-#define LIBRARY__BUFFER_VIEW_COUNT 1000
-#define LIBRARY__ACCESSOR_COUNT 1000
-#define LIBRARY__TEXTURESAMPLER_COUNT 100
-#define LIBRARY__IMAGE_COUNT 100
-#define LIBRARY__TEXTURE_COUNT 100
-#define LIBRARY__MATERIAL_COUNT 100
-#define LIBRARY__SKIN_COUNT 10
-#define LIBRARY__MESH_COUNT 100
-#define LIBRARY__NODE_COUNT 200
-#define LIBRARY__SCENE_COUNT 20
-#define LIBRARY__SAMPLER_COUNT 20
-#define LIBRARY__CHANNEL_COUNT 20
-#define LIBRARY__ANIMATION_COUNT 20
+#define LIBRARY__BUFFER_COUNT BYTESIZED_MESH_COUNT + BYTESIZED_TEXTURE_COUNT
+#define LIBRARY__BUFFERVIEW_COUNT BYTESIZED_VERTEXBUFFER_COUNT
+#define LIBRARY__ACCESSOR_COUNT BYTESIZED_VERTEXBUFFER_COUNT
+#define LIBRARY__TEXTURESAMPLER_COUNT BYTESIZED_TEXTURE_COUNT
+#define LIBRARY__IMAGE_COUNT BYTESIZED_TEXTURE_COUNT
+#define LIBRARY__TEXTURE_COUNT BYTESIZED_TEXTURE_COUNT
+#define LIBRARY__MATERIAL_COUNT BYTESIZED_MATERIAL_COUNT
+#define LIBRARY__MESH_COUNT BYTESIZED_MESH_COUNT
+#define LIBRARY__NODE_COUNT BYTESIZED_NODE_COUNT
+#define LIBRARY__SCENE_COUNT BYTESIZED_SCENE_COUNT
+#ifdef BYTESIZED_USE_SKINNING
+#define LIBRARY__SAMPLER_COUNT BYTESIZED_ANIMATION_COUNT
+#define LIBRARY__CHANNEL_COUNT BYTESIZED_ANIMATION_COUNT * 3
+#define LIBRARY__SKIN_COUNT BYTESIZED_SKIN_COUNT
+#define LIBRARY__ANIMATION_COUNT BYTESIZED_ANIMATION_COUNT
+#endif
 #define LIBRARY__COLLECTION_COUNT 50
 
 static library::Buffer BUFFERS[LIBRARY__BUFFER_COUNT] = {};
-static library::Bufferview BUFFERVIEWS[LIBRARY__BUFFER_VIEW_COUNT] = {};
+static library::Bufferview BUFFERVIEWS[LIBRARY__BUFFERVIEW_COUNT] = {};
 static library::Accessor ACCESSORS[LIBRARY__ACCESSOR_COUNT] = {};
 static library::TextureSampler TEXTURESAMPLERS[LIBRARY__TEXTURESAMPLER_COUNT] = {};
 static library::Image IMAGES[LIBRARY__IMAGE_COUNT] = {};
 static library::Material MATERIALS[LIBRARY__MATERIAL_COUNT] = {};
 static library::Texture TEXTURES[LIBRARY__TEXTURE_COUNT] = {};
-static library::Skin SKINS[LIBRARY__SKIN_COUNT] = {};
-static library::Mesh MESHES[LIBRARY__MESH_COUNT] = {};
+static library::Mesh MESHS[LIBRARY__MESH_COUNT] = {};
 static library::Node NODES[LIBRARY__NODE_COUNT] = {};
 static library::Scene SCENES[LIBRARY__SCENE_COUNT] = {};
+#ifdef BYTESIZED_USE_SKINNING
+static library::Skin SKINS[LIBRARY__SKIN_COUNT] = {};
 static library::Animation ANIMATIONS[LIBRARY__ANIMATION_COUNT] = {};
+#endif
 static library::Collection COLLECTIONS[LIBRARY__COLLECTION_COUNT] = {};
 
 static uint32_t ACTIVE_BUFFERS{0};
@@ -46,12 +50,39 @@ static uint32_t ACTIVE_TEXTURESAMPLERS{0};
 static uint32_t ACTIVE_IMAGES{0};
 static uint32_t ACTIVE_MATERIALS{0};
 static uint32_t ACTIVE_TEXTURES{0};
-static uint32_t ACTIVE_SKINS{0};
-static uint32_t ACTIVE_MESHES{0};
+static uint32_t ACTIVE_MESHS{0};
 static uint32_t ACTIVE_NODES{0};
 static uint32_t ACTIVE_SCENES{0};
+#ifdef BYTESIZED_USE_SKINNING
+static uint32_t ACTIVE_SKINS{0};
 static uint32_t ACTIVE_ANIMATIONS{0};
+#endif
 static uint32_t ACTIVE_COLLECTIONS{0};
+
+#define PRINT_USAGE(var)                                                                           \
+    do {                                                                                           \
+        printf("%sS: %d / %d\n", #var, ACTIVE_##var##S, LIBRARY__##var##_COUNT);                   \
+    } while (0);
+
+void library::printAllocations() {
+    printf("\nLibrary allocations:\n");
+    PRINT_USAGE(BUFFER);
+    PRINT_USAGE(BUFFERVIEW);
+    PRINT_USAGE(ACCESSOR);
+    PRINT_USAGE(TEXTURESAMPLER);
+    PRINT_USAGE(IMAGE);
+    PRINT_USAGE(MATERIAL);
+    PRINT_USAGE(TEXTURE);
+    PRINT_USAGE(MESH);
+    PRINT_USAGE(NODE);
+    PRINT_USAGE(SCENE);
+#ifdef BYTESIZED_USE_SKINNING
+    PRINT_USAGE(SKIN);
+    PRINT_USAGE(ANIMATION);
+#endif
+    PRINT_USAGE(COLLECTION);
+    printf("-------------------------\n\n");
+}
 
 static library::Collection *cCollection{nullptr};
 
@@ -112,19 +143,21 @@ enum JsonParseState {
     PARSE_NODE_ROTATION,
     PARSE_NODE_SCALE,
     PARSE_MESHES,
-    PARSE_SKINS,
     PARSE_ACCESSORS,
     PARSE_BUFFERVIEWS,
     PARSE_BUFFERS,
-    PARSE_ANIM_SAMPLERS,
-    PARSE_ANIM_CHANNELS,
-    PARSE_ANIMATIONS,
     PARSE_MATERIALS,
     PARSE_MATERIALS_BASETEX,
     PARSE_MATERIALS_BASECOLOR,
     PARSE_TEXTURES,
     PARSE_IMAGES,
     PARSE_SAMPLERS,
+#ifdef BYTESIZED_USE_SKINNING
+    PARSE_SKINS,
+    PARSE_ANIM_SAMPLERS,
+    PARSE_ANIM_CHANNELS,
+    PARSE_ANIMATIONS,
+#endif
 };
 
 struct GLBJsonStream : public JsonStream {
@@ -138,13 +171,15 @@ struct GLBJsonStream : public JsonStream {
     library::Image *sImage{IMAGES};
     library::Material *sMaterial{MATERIALS};
     library::Texture *sTexture{TEXTURES};
-    library::Skin *sSkin{SKINS};
-    library::Mesh *sMesh{MESHES};
+    library::Mesh *sMesh{MESHS};
     library::Node *sNode{NODES};
     library::Scene *sScene{SCENES};
+#ifdef BYTESIZED_USE_SKINNING
     library::Sampler *sSampler{nullptr};
+    library::Skin *sSkin{SKINS};
     library::Channel *sChannel{nullptr};
     library::Animation *sAnimation{ANIMATIONS};
+#endif
 
     library::Buffer *cBuffer{nullptr};
     library::Bufferview *cBufferview{nullptr};
@@ -153,13 +188,15 @@ struct GLBJsonStream : public JsonStream {
     library::Image *cImage{nullptr};
     library::Material *cMaterial{nullptr};
     library::Texture *cTexture{nullptr};
-    library::Skin *cSkin{nullptr};
     library::Mesh *cMesh{nullptr};
     library::Node *cNode{nullptr};
     library::Scene *cScene{nullptr};
+#ifdef BYTESIZED_USE_SKINNING
     library::Sampler *cSampler{nullptr};
+    library::Skin *cSkin{nullptr};
     library::Channel *cChannel{nullptr};
     library::Animation *cAnimation{nullptr};
+#endif
 
     virtual void object(const std::string_view &parent, const std::string_view &key) override {
         switch (state) {
@@ -167,40 +204,60 @@ struct GLBJsonStream : public JsonStream {
         case PARSE_SCENES:
             state = PARSE_SCENES;
             cScene = SCENES + ACTIVE_SCENES++;
-            assert(ACTIVE_SCENES < LIBRARY__SCENE_COUNT);
+            assert(ACTIVE_SCENES <= LIBRARY__SCENE_COUNT);
             break;
         case PARSE_NODES:
             cNode = NODES + ACTIVE_NODES++;
             cNode->scene = cScene;
             ++cCollection->nodes_count;
-            assert(ACTIVE_NODES < LIBRARY__NODE_COUNT);
+            assert(ACTIVE_NODES <= LIBRARY__NODE_COUNT);
             break;
         case PARSE_MESHES:
             if (parent == "meshes") {
-                cMesh = MESHES + ACTIVE_MESHES++;
+                cMesh = MESHS + ACTIVE_MESHS++;
                 ++cCollection->meshes_count;
-                assert(ACTIVE_MESHES < LIBRARY__MESH_COUNT);
+                assert(ACTIVE_MESHS <= LIBRARY__MESH_COUNT);
             } else if (parent == "primitives") {
                 if (key == "") {
                     cMesh->primitives.emplace_back();
                 }
             }
             break;
-        case PARSE_SKINS:
-            cSkin = SKINS + ACTIVE_SKINS++;
-            assert(ACTIVE_SKINS < LIBRARY__SKIN_COUNT);
-            break;
         case PARSE_ACCESSORS:
             cAccessor = ACCESSORS + ACTIVE_ACCESSORS++;
-            assert(ACTIVE_ACCESSORS < LIBRARY__ACCESSOR_COUNT);
+            assert(ACTIVE_ACCESSORS <= LIBRARY__ACCESSOR_COUNT);
             break;
         case PARSE_BUFFERVIEWS:
             cBufferview = BUFFERVIEWS + ACTIVE_BUFFERVIEWS++;
-            assert(ACTIVE_BUFFERVIEWS < LIBRARY__BUFFER_VIEW_COUNT);
+            assert(ACTIVE_BUFFERVIEWS <= LIBRARY__BUFFERVIEW_COUNT);
             break;
         case PARSE_BUFFERS:
             cBuffer = BUFFERS + ACTIVE_BUFFERS++;
-            assert(ACTIVE_BUFFERS < LIBRARY__BUFFER_COUNT);
+            assert(ACTIVE_BUFFERS <= LIBRARY__BUFFER_COUNT);
+            break;
+        case PARSE_SAMPLERS:
+            cTextureSampler = TEXTURESAMPLERS + ACTIVE_TEXTURESAMPLERS++;
+            break;
+        case PARSE_IMAGES:
+            cImage = IMAGES + ACTIVE_IMAGES++;
+            break;
+        case PARSE_TEXTURES:
+            cTexture = TEXTURES + ACTIVE_TEXTURES++;
+            ++cCollection->textures_count;
+            break;
+        case PARSE_MATERIALS:
+            if (key == "baseColorTexture") {
+                state = PARSE_MATERIALS_BASETEX;
+            } else if (key.length() == 0) {
+                cMaterial = MATERIALS + ACTIVE_MATERIALS++;
+                cMaterial->baseColor = {1.0f, 1.0f, 1.0f, 1.0f};
+                ++cCollection->materials_count;
+            }
+            break;
+#ifdef BYTESIZED_USE_SKINNING
+        case PARSE_SKINS:
+            cSkin = SKINS + ACTIVE_SKINS++;
+            assert(ACTIVE_SKINS <= LIBRARY__SKIN_COUNT);
             break;
         case PARSE_ANIM_SAMPLERS:
         case PARSE_ANIM_CHANNELS:
@@ -231,25 +288,7 @@ struct GLBJsonStream : public JsonStream {
                 cChannel = nullptr;
             }
             break;
-        case PARSE_SAMPLERS:
-            cTextureSampler = TEXTURESAMPLERS + ACTIVE_TEXTURESAMPLERS++;
-            break;
-        case PARSE_IMAGES:
-            cImage = IMAGES + ACTIVE_IMAGES++;
-            break;
-        case PARSE_TEXTURES:
-            cTexture = TEXTURES + ACTIVE_TEXTURES++;
-            ++cCollection->textures_count;
-            break;
-        case PARSE_MATERIALS:
-            if (key == "baseColorTexture") {
-                state = PARSE_MATERIALS_BASETEX;
-            } else if (key.length() == 0) {
-                cMaterial = MATERIALS + ACTIVE_MATERIALS++;
-                cMaterial->baseColor = {1.0f, 1.0f, 1.0f, 1.0f};
-                ++cCollection->materials_count;
-            }
-            break;
+#endif
         default:
             break;
         }
@@ -270,14 +309,22 @@ struct GLBJsonStream : public JsonStream {
             }
         } else if (key == "meshes") {
             state = PARSE_MESHES;
-        } else if (key == "skins") {
-            state = PARSE_SKINS;
         } else if (key == "accessors") {
             state = PARSE_ACCESSORS;
         } else if (key == "bufferViews") {
             state = PARSE_BUFFERVIEWS;
         } else if (key == "buffers") {
             state = PARSE_BUFFERS;
+        } else if (key == "materials") {
+            state = PARSE_MATERIALS;
+        } else if (key == "images") {
+            state = PARSE_IMAGES;
+        } else if (key == "textures") {
+            state = PARSE_TEXTURES;
+        }
+#ifdef BYTESIZED_USE_SKINNING
+        else if (key == "skins") {
+            state = PARSE_SKINS;
         } else if (key == "animations") {
             state = PARSE_ANIMATIONS;
         } else if (key == "samplers") {
@@ -288,13 +335,8 @@ struct GLBJsonStream : public JsonStream {
             }
         } else if (key == "channels") {
             state = PARSE_ANIM_CHANNELS;
-        } else if (key == "materials") {
-            state = PARSE_MATERIALS;
-        } else if (key == "images") {
-            state = PARSE_IMAGES;
-        } else if (key == "textures") {
-            state = PARSE_TEXTURES;
         }
+#endif
         switch (state) {
         case PARSE_NODES:
             if (key == "translation") {
@@ -327,6 +369,13 @@ struct GLBJsonStream : public JsonStream {
             case PARSE_MESHES:
                 cMesh->name = val;
                 break;
+            case PARSE_MATERIALS:
+                cMaterial->name = val;
+                break;
+            case PARSE_IMAGES:
+                cImage->name = val;
+                break;
+#ifdef BYTESIZED_USE_SKINNING
             case PARSE_SKINS:
                 cSkin->name = val;
                 break;
@@ -335,12 +384,7 @@ struct GLBJsonStream : public JsonStream {
             case PARSE_ANIMATIONS:
                 cAnimation->name = val;
                 break;
-            case PARSE_MATERIALS:
-                cMaterial->name = val;
-                break;
-            case PARSE_IMAGES:
-                cImage->name = val;
-                break;
+#endif
             default:
                 break;
             }
@@ -363,6 +407,7 @@ struct GLBJsonStream : public JsonStream {
                 }
             }
             break;
+#ifdef BYTESIZED_USE_SKINNING
         case PARSE_ANIM_CHANNELS:
             if (key == "path") {
                 if (val == "translation") {
@@ -383,6 +428,7 @@ struct GLBJsonStream : public JsonStream {
                 }
             }
             break;
+#endif
         default:
             break;
         }
@@ -395,9 +441,12 @@ struct GLBJsonStream : public JsonStream {
                 cNode->mesh = sMesh + val;
             } else if (parent == "children") {
                 cNode->children.emplace_back(sNode + val);
-            } else if (key == "skin") {
+            }
+#ifdef BYTESIZED_USE_SKINNING
+            else if (key == "skin") {
                 cNode->skin = sSkin + val;
             }
+#endif
             break;
         case PARSE_SCENE_NODES:
             cScene->nodes.emplace_back(sNode + val);
@@ -410,12 +459,20 @@ struct GLBJsonStream : public JsonStream {
             } else if (key == "TEXCOORD_0") {
                 cMesh->primitives.back().attributes[library::Primitive::TEXCOORD_0] =
                     sAccessor + val;
-            } else if (key == "JOINTS_0") {
+            } else if (key == "COLOR_0") {
+                cMesh->primitives.back().attributes[library::Primitive::COLOR_0] = sAccessor + val;
+            } else if (key == "COLOR_1") {
+                cMesh->primitives.back().attributes[library::Primitive::COLOR_1] = sAccessor + val;
+            }
+#ifdef BYTESIZED_USE_SKINNING
+            else if (key == "JOINTS_0") {
                 cMesh->primitives.back().attributes[library::Primitive::JOINTS_0] = sAccessor + val;
             } else if (key == "WEIGHTS_0") {
                 cMesh->primitives.back().attributes[library::Primitive::WEIGHTS_0] =
                     sAccessor + val;
-            } else if (key == "indices") {
+            }
+#endif
+            else if (key == "indices") {
                 cMesh->primitives.back().indices = sAccessor + val;
             } else if (key == "material") {
                 cMesh->primitives.back().material = sMaterial + val;
@@ -428,6 +485,9 @@ struct GLBJsonStream : public JsonStream {
                 cAccessor->componentType = val;
             } else if (key == "count") {
                 cAccessor->count = val;
+            } else if (key == "normalized") {
+                printf("Normalized!\n");
+                // pass
             }
             break;
         case PARSE_BUFFERVIEWS:
@@ -466,26 +526,6 @@ struct GLBJsonStream : public JsonStream {
                 state = PARSE_MATERIALS;
             }
             break;
-        case PARSE_SKINS:
-            if (parent == "joints") {
-                cSkin->joints.emplace_back(sNode + val);
-            } else if (key == "inverseBindMatrices") {
-                cSkin->ibmData = sAccessor + val;
-            }
-        case PARSE_ANIM_CHANNELS:
-            if (key == "sampler") {
-                cChannel->sampler = sSampler + val;
-            } else if (key == "node") {
-                cChannel->targetNode = sNode + val;
-            }
-            break;
-        case PARSE_ANIM_SAMPLERS:
-            if (key == "input") {
-                cSampler->input = sAccessor + val;
-            } else if (key == "output") {
-                cSampler->output = sAccessor + val;
-            }
-            break;
         case PARSE_MATERIALS_BASETEX:
             if (key == "index") {
                 cMaterial->textures[library::Material::TEX_DIFFUSE] = sTexture + val;
@@ -511,6 +551,28 @@ struct GLBJsonStream : public JsonStream {
                 cImage->view = sBufferview + val;
             }
             break;
+#ifdef BYTESIZED_USE_SKINNING
+        case PARSE_SKINS:
+            if (parent == "joints") {
+                cSkin->joints.emplace_back(sNode + val);
+            } else if (key == "inverseBindMatrices") {
+                cSkin->ibmData = sAccessor + val;
+            }
+        case PARSE_ANIM_CHANNELS:
+            if (key == "sampler") {
+                cChannel->sampler = sSampler + val;
+            } else if (key == "node") {
+                cChannel->targetNode = sNode + val;
+            }
+            break;
+        case PARSE_ANIM_SAMPLERS:
+            if (key == "input") {
+                cSampler->input = sAccessor + val;
+            } else if (key == "output") {
+                cSampler->output = sAccessor + val;
+            }
+            break;
+#endif
         default:
             break;
         }
@@ -566,26 +628,31 @@ std::list<std::vector<uint8_t>> _copiedBuffers;
 inline static void _parseChunk(glb_chunk *chunk, bool copyBuffers) {
     switch (chunk->type) {
     case GLB_CHUNK_TYPE_JSON: {
+        printf("%.*s\n", (int)chunk->length, (const char *)(chunk + 1));
         js.state = PARSE_IDLE;
         js.sScene = SCENES + ACTIVE_SCENES;
         js.sNode = NODES + ACTIVE_NODES;
-        js.sMesh = MESHES + ACTIVE_MESHES;
-        js.sSkin = SKINS + ACTIVE_SKINS;
+        js.sMesh = MESHS + ACTIVE_MESHS;
         js.sAccessor = ACCESSORS + ACTIVE_ACCESSORS;
         js.sBufferview = BUFFERVIEWS + ACTIVE_BUFFERVIEWS;
         js.sBuffer = BUFFERS + ACTIVE_BUFFERS;
         js.sTextureSampler = TEXTURESAMPLERS + ACTIVE_TEXTURESAMPLERS;
-        js.sAnimation = ANIMATIONS + ACTIVE_ANIMATIONS;
         js.sImage = IMAGES + ACTIVE_IMAGES;
         js.sTexture = TEXTURES + ACTIVE_TEXTURES;
         js.sMaterial = MATERIALS + ACTIVE_MATERIALS;
+#ifdef BYTESIZED_USE_SKINNING
+        js.sSkin = SKINS + ACTIVE_SKINS;
+        js.sAnimation = ANIMATIONS + ACTIVE_ANIMATIONS;
+#endif
         cCollection = COLLECTIONS + ACTIVE_COLLECTIONS++;
         cCollection->scene = js.sScene;
-        cCollection->animations = js.sAnimation;
         cCollection->nodes = js.sNode;
         cCollection->meshes = js.sMesh;
         cCollection->materials = js.sMaterial;
         cCollection->textures = js.sTexture;
+#ifdef BYTESIZED_USE_SKINNING
+        cCollection->animations = js.sAnimation;
+#endif
         loadJson(js, (char *)(chunk + 1), chunk->length);
         break;
     }
@@ -617,6 +684,7 @@ library::Collection *library::loadGLB(const unsigned char *glb, bool copyBuffers
         i -= chunk->length + sizeof(glb_chunk);
         chunk = (glb_chunk *)((unsigned char *)chunk + chunk->length + sizeof(glb_chunk));
     }
+#ifdef BYTESIZED_USE_SKINNING
     for (size_t k{0}; k < cCollection->nodes_count; ++k) {
         Node &node = cCollection->nodes[k];
         if (node.skin) {
@@ -626,6 +694,7 @@ library::Collection *library::loadGLB(const unsigned char *glb, bool copyBuffers
             }
         }
     }
+#endif
     return cCollection;
 }
 
@@ -654,7 +723,7 @@ library::Node *library::createNode() {
 }
 
 library::Mesh *library::createMesh() {
-    auto mesh = MESHES + ACTIVE_MESHES++;
+    auto mesh = MESHS + ACTIVE_MESHS++;
     return mesh;
 }
 
@@ -673,19 +742,4 @@ library::Accessor *library::createAccessor(const void *data, size_t count, size_
     accessor->bufferView->buffer->data = (unsigned char *)data;
     accessor->bufferView->buffer->length = accessor->bufferView->length;
     return accessor;
-}
-
-void library::print() {
-    LOG_INFO("# SCENES: %u NODES: %u MESHES: %u ACCESSORS: %u BUFFERVIEWS: %u", ACTIVE_SCENES,
-             ACTIVE_NODES, ACTIVE_MESHES, ACTIVE_ACCESSORS, ACTIVE_BUFFERVIEWS);
-    for (size_t i{0}; i < ACTIVE_SCENES; ++i) {
-        LOG_TRACE("SCENE: name=%s", SCENES[i].name.c_str());
-    }
-    for (size_t i{0}; i < ACTIVE_ANIMATIONS; ++i) {
-        LOG_TRACE("ANIMATIONS: name=%s", ANIMATIONS[i].name.c_str());
-    }
-    for (size_t i{0}; i < ACTIVE_NODES; ++i) {
-        LOG_TRACE("NODE: name=%s [%.1f %.1f %.1f]", NODES[i].name.c_str(), NODES[i].translation.x,
-                  NODES[i].translation.y, NODES[i].translation.z);
-    }
 }

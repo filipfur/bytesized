@@ -1,9 +1,9 @@
 #pragma once
 
+#include "bytesized_info.h"
+#include "trs.h"
 #include <string>
 #include <vector>
-
-#include "trs.h"
 
 namespace library {
 
@@ -54,7 +54,18 @@ struct Material {
 };
 
 struct Primitive {
-    enum Attribute { POSITION, NORMAL, TEXCOORD_0, JOINTS_0, WEIGHTS_0, COUNT };
+    enum Attribute {
+        POSITION,
+        NORMAL,
+        TEXCOORD_0,
+        COLOR_0,
+        COLOR_1,
+#ifdef BYTESIZED_USE_SKINNING
+        JOINTS_0,
+        WEIGHTS_0,
+#endif
+        COUNT,
+    };
     std::pair<const glm::vec3 *, size_t> positions() const {
         return {(glm::vec3 *)attributes[POSITION]->data(),
                 attributes[POSITION]->bufferView->length / sizeof(glm::vec3)};
@@ -84,16 +95,20 @@ struct Node : public TRS {
     std::string name;
     Mesh *mesh;
     std::vector<Node *> children;
+#ifdef BYTESIZED_USE_SkINNING
     struct Skin *skin;
+#endif
     void *gpuInstance;
 };
 
+#ifdef BYTESIZED_USE_SkINNING
 struct Skin {
     std::string name;
     std::vector<Node *> joints;
     Accessor *ibmData;
     std::vector<glm::mat4> inverseBindMatrices;
 };
+#endif
 
 struct Scene {
     std::string name;
@@ -101,6 +116,7 @@ struct Scene {
     void *gpuInstance;
 };
 
+#ifdef BYTESIZED_USE_SKINNING
 struct Sampler {
     enum Type { NONE, STEP, LINEAR } type;
     Accessor *input;
@@ -117,6 +133,23 @@ struct Animation {
     std::string name;
     Channel channels[96];
     Sampler samplers[96];
+};
+#endif
+
+struct Collection {
+    Scene *scene;
+    Node *nodes;
+    uint32_t nodes_count;
+    Mesh *meshes;
+    uint32_t meshes_count;
+    Material *materials;
+    uint32_t materials_count;
+    Texture *textures;
+    uint32_t textures_count;
+#ifdef BYTESIZED_USE_SKINNING
+    Animation *animations;
+    uint32_t animations_count;
+#endif
 };
 
 } // namespace library

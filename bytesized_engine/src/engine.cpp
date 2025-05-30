@@ -1,5 +1,4 @@
 #include "engine.h"
-#include "assets.h"
 #include "character.h"
 #include "component.h"
 #include "dexterity.h"
@@ -17,10 +16,10 @@
 #include <algorithm>
 #include <list>
 
-assets::Collection *Engine::addCollection(const library::Collection &collection) {
+gpu::Collection *Engine::addCollection(const library::Collection &collection) {
     return &_collections.emplace_back(collection);
 }
-assets::Collection *Engine::addGLB(const uint8_t *data) {
+gpu::Collection *Engine::addGLB(const uint8_t *data) {
     return addCollection(*library::loadGLB(data, true));
 }
 
@@ -161,6 +160,17 @@ void Engine::attachController(gpu::Node *node, geom::Geometry::Type type) {
     ctrl.jumpCount = 2;
 }
 
+static const char *_clickNPickFrag = BYTESIZED_GLSL_VERSION R"(
+precision highp float;
+out vec4 FragColor;
+in vec2 UV;
+uniform float u_object_id;
+void main()
+{ 
+    FragColor.r = u_object_id / 255.0;
+}
+)";
+
 void Engine::init(int drawableWidth, int drawableHeight) {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -182,7 +192,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
 
     auto builtinGeoms = _collections.emplace_back(*gpu::createBuiltinPrimitives());
 
-    bdf::Font *font = bdf::createFont((const char *)_embed_boxxy_bdf, sizeof(_embed_boxxy_bdf));
+    font = bdf::createFont((const char *)_embed_boxxy_bdf, sizeof(_embed_boxxy_bdf));
     gui.create(font, _windowWidth, _windowHeight, 2.0f, GUI::EVERYTHING);
 
     const glm::vec4 defaultColor = Color::green.vec4();
@@ -202,7 +212,6 @@ void Engine::init(int drawableWidth, int drawableHeight) {
                                             {"u_color", defaultColor},
                                             {"u_diffuse", 0},
                                             {"u_model", glm::mat4{1.0f}}});
-    gpu::builtinUBO(gpu::UBO_SKINNING)->bindShaders({animProgram});
 
     const Color bgColor(0xe0f8d0);
     const Color textColor(0x081820);
@@ -214,12 +223,21 @@ void Engine::init(int drawableWidth, int drawableHeight) {
                                             {"u_model", glm::mat4{1.0f}},
                                             {"u_metallic", 1.0f},
                                             {"u_time", 0.0f}});
+
+    gpu::Shader *clickNPickShader = gpu::createShader(GL_FRAGMENT_SHADER, _clickNPickFrag);
+    clickProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::OBJECT_VERT), clickNPickShader,
+                                            {{"u_model", glm::mat4{1.0f}}, {"u_object_id", 0.0f}});
+    clickAnimProgram =
+        gpu::createShaderProgram(gpu::builtinShader(gpu::ANIM_VERT), clickNPickShader,
+                                 {{"u_model", glm::mat4{1.0f}}, {"u_object_id", 0.0f}});
     gpu::builtinUBO(gpu::UBO_CAMERA)
         ->bindShaders({
             shaderProgram,
             billboardProgram,
             animProgram,
             textProgram,
+            clickProgram,
+            clickAnimProgram,
         });
     gpu::builtinUBO(gpu::UBO_LIGHT)
         ->bindShaders({
@@ -228,6 +246,7 @@ void Engine::init(int drawableWidth, int drawableHeight) {
             animProgram,
             textProgram,
         });
+    gpu::builtinUBO(gpu::UBO_SKINNING)->bindShaders({animProgram, clickAnimProgram});
 
     uiProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::UI_VERT),
                                          gpu::builtinShader(gpu::TEXTURE_FRAG),
@@ -256,10 +275,10 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     fbo->createTexture(GL_COLOR_ATTACHMENT0, _windowWidth * 2, _windowHeight * 2,
                        gpu::ChannelSetting::RGB, GL_UNSIGNED_BYTE);
     fbo->createDepthStencil(_windowWidth * 2, _windowHeight * 2);
-    fbo->checkStatus();
+    fbo->checkStatus("engine.fbo");
     fbo->unbind();
-    _clickNPick.create(_windowWidth, _windowHeight, gpu::builtinShader(gpu::OBJECT_VERT),
-                       gpu::builtinShader(gpu::ANIM_VERT), perspectiveProjection, 0.1f);
+    _clickNPick.create(_windowWidth, _windowHeight, perspectiveProjection, 0.1f, clickProgram);
+    _clickNPick.shaderPrograms.push_back(clickAnimProgram);
 
     gridNode = gpu::createNode();
     gridNode->hidden = true;
@@ -300,6 +319,34 @@ void Engine::init(int drawableWidth, int drawableHeight) {
         }
         return false;
     });
+    _console.addCustomCommand(":c.pitch=", [this](const char *cmd) {
+        _camera.targetView.pitch = std::atof(cmd + strlen(":c.pitch="));
+        return true;
+    });
+    _console.addCustomCommand(":c.yaw=", [this](const char *cmd) {
+        _camera.targetView.yaw = std::atof(cmd + strlen(":c.yaw="));
+        return true;
+    });
+    _console.addCustomCommand(":c.distance=", [this](const char *cmd) {
+        _camera.targetView.distance = std::atof(cmd + strlen(":c.distance="));
+        return true;
+    });
+    _console.addCustomCommand(":c.origo", [this](const char *cmd) {
+        _camera.targetView.center = glm::vec3(0.0f);
+        return true;
+    });
+    _console.addCustomCommand(":c.x=", [this](const char *cmd) {
+        _camera.targetView.center.x = std::atof(cmd + strlen(":c.x="));
+        return true;
+    });
+    _console.addCustomCommand(":c.y=", [this](const char *cmd) {
+        _camera.targetView.center.y = std::atof(cmd + strlen(":c.y="));
+        return true;
+    });
+    _console.addCustomCommand(":c.z=", [this](const char *cmd) {
+        _camera.targetView.center.z = std::atof(cmd + strlen(":c.z="));
+        return true;
+    });
     _console.addCustomCommand(":viz", [this](const char * /*key*/) {
         if (auto sel = _editor.selectedNode()) {
             auto n = sel->find([](gpu::Node *node) { return node->entity; });
@@ -334,8 +381,8 @@ void Engine::init(int drawableWidth, int drawableHeight) {
         }
         return false;
     });
-    if (_iApp) {
-        _iApp->appInit(this);
+    if (_iEngineApp) {
+        _iEngineApp->appInit(this);
     }
     _openPanel(Panel_assign(Panel::SAVE_FILE, (void *)&_saveFile));
 }
@@ -346,6 +393,9 @@ bool Engine::update(float dt) {
     } else {
         _editor.setTStep(_console.settingFloat("tstep"));
         _editor.setRStep(_console.settingFloat("rstep"));
+        if (_iEngineApp) {
+            _iEngineApp->appUpdate(dt);
+        }
         for (size_t i{0}; i < 3; ++i) {
             auto &vec = axisVectors[i];
             if (auto node = _editor.selectedNode()) {
@@ -417,13 +467,14 @@ static void _renderNodes(Editor &editor, gpu::ShaderProgram *shaderProgram,
 void Engine::draw() {
     const glm::mat4 &view = _camera.view();
 
-    gpu::CameraBlock_setViewPos(view, _camera.currentView.center);
+    gpu::CameraBlock_setViewPos(view, _camera.currentView.center -
+                                          _camera.orientation() * _camera.currentView.distance);
 
     if (_iGame) {
         _iGame->gameDraw();
     } else {
         float t = Time::seconds();
-        _clickNPick.update(view);
+        _clickNPick.update();
 
         fbo->bind();
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -471,6 +522,10 @@ void Engine::draw() {
                     node->render(textProgram);
                 }
             }
+        }
+
+        if (_iEngineApp) {
+            _iEngineApp->appDraw();
         }
 
         if (_console.settingBool("wiremode")) {
@@ -699,10 +754,8 @@ bool Engine::openSaveFile(const char *fpath) {
     strcpy(_saveFile.path, fpath);
     loadWorld(fpath, _saveFile);
     _editor.selectNode(nullptr);
-    std::for_each(_saveFile.nodes.begin(), _saveFile.nodes.end(),
-                  [this](gpu::Node *node) { _clickNPick.registerNode(node); });
-    if (_iApp) {
-        _iApp->appLoad(this);
+    if (_iEngineApp) {
+        _iEngineApp->appLoad();
     }
     _changePanel(Panel_byIndex(0), _camera);
     return true;
@@ -729,12 +782,11 @@ bool Engine::_openPanel(Panel *panel) {
         printf("Panel %zu already open\n", index);
         return false;
     }
-    _clickNPick.clear();
     _editor.selectNode(nullptr);
     switch (panel->type) {
     case Panel::COLLECTION:
-        gui.setTitleText(((assets::Collection *)panel->data)->name().c_str());
-        _openCollection(*((assets::Collection *)panel->data));
+        gui.setTitleText(((gpu::Collection *)panel->data)->name().c_str());
+        _openCollection(*((gpu::Collection *)panel->data));
         break;
     case Panel::SAVE_FILE:
         gui.setTitleText(_saveFile.path);
@@ -747,7 +799,7 @@ bool Engine::_openPanel(Panel *panel) {
     return true;
 }
 
-void Engine::_openCollection(const assets::Collection &collection) {
+void Engine::_openCollection(const gpu::Collection &collection) {
     unstage();
     stage(*collection.scene);
     _editor.selectNode(nullptr);
@@ -773,9 +825,28 @@ bool Engine::openScene(const char *name) {
     return false;
 }
 
-bool Engine::nodeClicked(gpu::Node *node) {
-    if (node) {
-        _editor.selectNode(node);
+void Engine::renderClickables(gpu::ShaderProgram *sp, uint8_t &id) {
+    if (sp == clickProgram) {
+        for (gpu::Node *node : nodes) {
+            sp->uniforms.at("u_object_id") << static_cast<float>(id++);
+            node->render(sp);
+        }
+    } else if (sp == clickAnimProgram) {
+        for (gpu::Node *skinnedNode : skinNodes) {
+            sp->uniforms.at("u_object_id") << static_cast<float>(id++);
+            skinnedNode->render(sp);
+        }
+    }
+}
+
+bool Engine::nodeClicked(size_t index) {
+    size_t numNodes = nodes.size();
+    printf("clicked index=%zu\n", index);
+    if (index < numNodes) {
+        _editor.selectNode(nodes[index]);
+        return true;
+    } else if (index < (numNodes + skinNodes.size())) {
+        _editor.selectNode(skinNodes[index - numNodes]);
         return true;
     }
     return false;
@@ -788,7 +859,9 @@ void Engine::quit(bool force) {
     strcpy(sessionData.recentFile, _saveFile.path);
     sessionData.cameraView = _camera.targetView;
     persist::storeSession(sessionData);
-    exit(0);
+    SDL_Event ev;
+    ev.type = SDL_QUIT;
+    SDL_PushEvent(&ev);
 }
 
 static void _updateNodeInfo(GUI &gui, gpu::Node *node) {
@@ -821,14 +894,12 @@ void Engine::nodeSelected(gpu::Node *node) { _updateNodeInfo(gui, node); }
 void Engine::nodeAdded(gpu::Node *node) {
     _saveFile.nodes.emplace_back(node);
     _saveFile.dirty = true;
-    _clickNPick.registerNode(node);
     _editor.selectNode(node);
 }
 
 void Engine::nodeRemoved(gpu::Node *node) {
     _saveFile.nodes.erase(std::find(_saveFile.nodes.begin(), _saveFile.nodes.end(), node));
     _saveFile.dirty = true;
-    _clickNPick.unregisterNode(node);
     _editor.selectNode(nullptr);
 }
 
@@ -901,21 +972,18 @@ Engine::~Engine() { gpu::dispose(); }
 void Engine::unstage() {
     nodes.clear();
     skinNodes.clear();
-    _clickNPick.clear();
 };
 
 void Engine::stage(const gpu::Scene &scene) {
     for (gpu::Node *node : scene.nodes) {
         if (node->skin) {
             skinNodes.emplace_back(node);
-            _clickNPick.registerNode(node);
         } else {
             nodes.emplace_back(node);
-            _clickNPick.registerNode(node);
         }
     }
 }
-assets::Collection *Engine::findCollection(const char *name) {
+gpu::Collection *Engine::findCollection(const char *name) {
     for (auto &collection : _collections) {
         if (collection.name().compare(name) == 0) {
             return &collection;

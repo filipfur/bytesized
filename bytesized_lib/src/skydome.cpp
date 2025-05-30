@@ -8,7 +8,7 @@ static skydome::Sky _defaultSky{
     0.0f,
 };
 
-const char *skyboxVertSource = R"(#version 330 core
+static const char *_skyboxVertSource = BYTESIZED_GLSL_VERSION R"(
     layout (location = 0) in vec3 aPos;
     layout (location = 1) in vec3 aNormal;
     layout (location = 2) in vec2 aTexCoords;
@@ -36,7 +36,8 @@ const char *skyboxVertSource = R"(#version 330 core
     }
 )";
 
-const char *skyboxFragSource = R"(#version 330 core
+#if 0
+static const char *_skyboxFragSource = BYTESIZED_GLSL_VERSION R"(
 precision highp float;
 // Simplex 2D noise
 //
@@ -88,14 +89,16 @@ void main()
     fragColor.rgb = mix(fragColor.rgb, fragColor.rgb + fragColor.rgb * max(0.0, snoise(vec2(sin(texCoords.x * 2.0 * 3.141592) * 0.5 + 0.5 + u_time * 0.02, texCoords.y) * vec2(2,2))) * 0.5, u_clouds);
 }
 )";
+#endif
 
-const char *skyboxFragSource2 = R"(#version 330 core
+static const char *_skyboxFragSource = BYTESIZED_GLSL_VERSION R"(
 precision highp float;
 
 in vec2 texCoords;
 in vec3 normal;
 
-out vec4 fragColor;
+layout (location = 0) out vec4 FragColor;
+layout (location = 1) out vec4 BlurColor;
 
 uniform float u_time;
 
@@ -104,16 +107,17 @@ uniform vec3 u_color_hi;
 
 void main()
 {
-    float f = smoothstep(0.5,0.6, texCoords.y);
-    fragColor = vec4(mix(u_color_lo, u_color_hi, sqrt(f)), 1.0);
+    float f = smoothstep(0.5, 0.6, texCoords.y);
+    FragColor = vec4(mix(u_color_lo, u_color_hi, sqrt(f)), 1.0);
+    BlurColor = FragColor;
 }
 )";
 
 static gpu::ShaderProgram *_shaderProgram{nullptr};
 void skydome::create() {
     _shaderProgram =
-        gpu::createShaderProgram(gpu::createShader(GL_VERTEX_SHADER, skyboxVertSource),
-                                 gpu::createShader(GL_FRAGMENT_SHADER, skyboxFragSource2),
+        gpu::createShaderProgram(gpu::createShader(GL_VERTEX_SHADER, _skyboxVertSource),
+                                 gpu::createShader(GL_FRAGMENT_SHADER, _skyboxFragSource),
                                  {
                                      {"u_time", 2.2f},
                                      {"u_color_hi", _defaultSky.high.vec3()},
@@ -135,7 +139,7 @@ void skydome::setSky(const Sky &sky) {
 void skydome::render() {
     _shaderProgram->use();
     glFrontFace(GL_CW);
-    glActiveTexture(0);
+    glActiveTexture(GL_TEXTURE0);
     gpu::builtinMaterial(gpu::BuiltinMaterial::WHITE)->textures[GL_TEXTURE0]->bind();
     gpu::builtinPrimitives(gpu::SPHERE)->render();
     glFrontFace(GL_CCW);
