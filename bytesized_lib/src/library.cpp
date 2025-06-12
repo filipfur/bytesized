@@ -25,7 +25,9 @@
 #define LIBRARY__SKIN_COUNT BYTESIZED_SKIN_COUNT
 #define LIBRARY__ANIMATION_COUNT BYTESIZED_ANIMATION_COUNT
 #endif
-#define LIBRARY__COLLECTION_COUNT 50
+#ifndef LIBRARY__COLLECTION_COUNT
+#define LIBRARY__COLLECTION_COUNT 10
+#endif
 
 static library::Buffer BUFFERS[LIBRARY__BUFFER_COUNT] = {};
 static library::Bufferview BUFFERVIEWS[LIBRARY__BUFFERVIEW_COUNT] = {};
@@ -628,7 +630,8 @@ std::list<std::vector<uint8_t>> _copiedBuffers;
 inline static void _parseChunk(glb_chunk *chunk, bool copyBuffers) {
     switch (chunk->type) {
     case GLB_CHUNK_TYPE_JSON: {
-        printf("%.*s\n", (int)chunk->length, (const char *)(chunk + 1));
+        // print json
+        // printf("%.*s\n", (int)chunk->length, (const char *)(chunk + 1));
         js.state = PARSE_IDLE;
         js.sScene = SCENES + ACTIVE_SCENES;
         js.sNode = NODES + ACTIVE_NODES;

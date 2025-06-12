@@ -3,6 +3,9 @@
 #include "bytesized_info.h"
 
 #ifdef BYTESIZED_USE_SKINNING
+
+#include "library.h"
+
 namespace gpu {
 
 struct Frame {
@@ -38,14 +41,6 @@ struct Playback {
     bool expired() { return time >= animation->endTime; }
 };
 
-Animation *createAnimation(const library::Animation &animation, struct Node *retargetNode);
-void freeAnimation(Animation *animation);
-
-Playback *createPlayback(Animation *animation);
-void freePlayback(Playback *playback);
-
-void animate(float dt);
-
 struct Skin {
     const library::Skin *librarySkin;
     std::vector<struct Node *> joints;
@@ -56,6 +51,20 @@ struct Skin {
     gpu::Animation *findAnimation(const char *name);
     gpu::Playback *playAnimation(const char *name);
 };
+
+size_t skinningBufferSize();
+void printSkinningUsages();
+
+Skin *createSkin(const library::Skin &skin);
+void freeSkin(gpu::Skin *skin);
+
+Animation *createAnimation(const library::Animation &animation, struct Node *retargetNode);
+void freeAnimation(Animation *animation);
+
+Playback *createPlayback(Animation *animation);
+void freePlayback(Playback *playback);
+
+void animate(float dt);
 
 } // namespace gpu
 

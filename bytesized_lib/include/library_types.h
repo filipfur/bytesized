@@ -95,13 +95,13 @@ struct Node : public TRS {
     std::string name;
     Mesh *mesh;
     std::vector<Node *> children;
-#ifdef BYTESIZED_USE_SkINNING
+#ifdef BYTESIZED_USE_SKINNING
     struct Skin *skin;
 #endif
     void *gpuInstance;
 };
 
-#ifdef BYTESIZED_USE_SkINNING
+#ifdef BYTESIZED_USE_SKINNING
 struct Skin {
     std::string name;
     std::vector<Node *> joints;

@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "builtin_shader.h"
 #include "character.h"
 #include "component.h"
 #include "dexterity.h"
@@ -7,7 +8,6 @@
 #include "geom_primitive.h"
 #include "gpu.h"
 #include "gpu_primitive.h"
-#include "gpu_shader.h"
 #include "gui.h"
 #include "persist.h"
 #include "playercontroller.h"
@@ -198,15 +198,15 @@ void Engine::init(int drawableWidth, int drawableHeight) {
     const glm::vec4 defaultColor = Color::green.vec4();
 
     shaderProgram = gpu::createShaderProgram(
-        gpu::builtinShader(gpu::OBJECT_VERT), gpu::builtinShader(gpu::OBJECT_FRAG),
+        builtin::shader(builtin::OBJECT_VERT), builtin::shader(builtin::OBJECT_FRAG),
         {{"u_color", defaultColor}, {"u_diffuse", 0}, {"u_model", glm::mat4{1.0f}}});
 
     billboardProgram = gpu::createShaderProgram(
-        gpu::builtinShader(gpu::BILLBOARD_VERT), gpu::builtinShader(gpu::OBJECT_FRAG),
+        builtin::shader(builtin::BILLBOARD_VERT), builtin::shader(builtin::OBJECT_FRAG),
         {{"u_color", defaultColor}, {"u_diffuse", 0}, {"u_model", glm::mat4{1.0f}}});
 
-    animProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::ANIM_VERT),
-                                           gpu::builtinShader(gpu::OBJECT_FRAG),
+    animProgram = gpu::createShaderProgram(builtin::shader(builtin::ANIM_VERT),
+                                           builtin::shader(builtin::OBJECT_FRAG),
                                            {//{"u_projection", perspectiveProjection},
                                             //{"u_view", glm::mat4{1.0f}},
                                             {"u_color", defaultColor},
@@ -215,8 +215,8 @@ void Engine::init(int drawableWidth, int drawableHeight) {
 
     const Color bgColor(0xe0f8d0);
     const Color textColor(0x081820);
-    textProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::TEXT_VERT),
-                                           gpu::builtinShader(gpu::TEXT_FRAG),
+    textProgram = gpu::createShaderProgram(builtin::shader(builtin::TEXT_VERT),
+                                           builtin::shader(builtin::TEXT_FRAG),
                                            {{"u_bg_color", bgColor.vec4()},
                                             {"u_text_color", textColor.vec4()},
                                             {"u_diffuse", 0},
@@ -225,10 +225,10 @@ void Engine::init(int drawableWidth, int drawableHeight) {
                                             {"u_time", 0.0f}});
 
     gpu::Shader *clickNPickShader = gpu::createShader(GL_FRAGMENT_SHADER, _clickNPickFrag);
-    clickProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::OBJECT_VERT), clickNPickShader,
+    clickProgram = gpu::createShaderProgram(builtin::shader(builtin::OBJECT_VERT), clickNPickShader,
                                             {{"u_model", glm::mat4{1.0f}}, {"u_object_id", 0.0f}});
     clickAnimProgram =
-        gpu::createShaderProgram(gpu::builtinShader(gpu::ANIM_VERT), clickNPickShader,
+        gpu::createShaderProgram(builtin::shader(builtin::ANIM_VERT), clickNPickShader,
                                  {{"u_model", glm::mat4{1.0f}}, {"u_object_id", 0.0f}});
     gpu::builtinUBO(gpu::UBO_CAMERA)
         ->bindShaders({
@@ -248,15 +248,15 @@ void Engine::init(int drawableWidth, int drawableHeight) {
         });
     gpu::builtinUBO(gpu::UBO_SKINNING)->bindShaders({animProgram, clickAnimProgram});
 
-    uiProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::UI_VERT),
-                                         gpu::builtinShader(gpu::TEXTURE_FRAG),
+    uiProgram = gpu::createShaderProgram(builtin::shader(builtin::UI_VERT),
+                                         builtin::shader(builtin::TEXTURE_FRAG),
                                          {{"u_projection", gui.projection},
                                           {"u_view", gui.view},
                                           {"u_diffuse", 0},
                                           {"u_model", glm::mat4{1.0f}}});
 
-    uiTextProgram = gpu::createShaderProgram(gpu::builtinShader(gpu::UI_VERT),
-                                             gpu::builtinShader(gpu::TEXT_FRAG),
+    uiTextProgram = gpu::createShaderProgram(builtin::shader(builtin::UI_VERT),
+                                             builtin::shader(builtin::TEXT_FRAG),
                                              {{"u_projection", gui.projection},
                                               {"u_view", gui.view},
                                               {"u_bg_color", bgColor.vec4()},
@@ -268,8 +268,8 @@ void Engine::init(int drawableWidth, int drawableHeight) {
 
     skydome::create();
     screenProgram =
-        gpu::createShaderProgram(gpu::builtinShader(gpu::SCREEN_VERT),
-                                 gpu::builtinShader(gpu::TEXTURE_FRAG), {{"u_texture", 0}});
+        gpu::createShaderProgram(builtin::shader(builtin::SCREEN_VERT),
+                                 builtin::shader(builtin::TEXTURE_FRAG), {{"u_texture", 0}});
     fbo = gpu::createFramebuffer();
     fbo->bind();
     fbo->createTexture(GL_COLOR_ATTACHMENT0, _windowWidth * 2, _windowHeight * 2,

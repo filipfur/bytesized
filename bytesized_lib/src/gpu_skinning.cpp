@@ -1,6 +1,11 @@
 #ifdef BYTESIZED_USE_SKINNING
 
 #include "gpu.h"
+#include "logging.h"
+
+static recycler<gpu::Skin, BYTESIZED_SKIN_COUNT> SKINS = {};
+static recycler<gpu::Animation, BYTESIZED_ANIMATION_COUNT> ANIMATIONS = {};
+static recycler<gpu::Playback, BYTESIZED_PLAYBACK_COUNT> PLAYBACKS = {};
 
 gpu::Animation *gpu::createAnimation(const library::Animation &anim, gpu::Node *retargetNode) {
     auto rval = ANIMATIONS.acquire();
@@ -83,6 +88,33 @@ gpu::Animation *gpu::createAnimation(const library::Animation &anim, gpu::Node *
         }
     }
     return rval;
+}
+
+size_t gpu::skinningBufferSize() { return sizeof(SKINS) + sizeof(ANIMATIONS) + sizeof(PLAYBACKS); }
+
+#define PRINT_USAGE(var)                                                                           \
+    do {                                                                                           \
+        printf("%s: %zu / %zu\n", #var, var.count(), var.size());                                  \
+    } while (0);
+
+void gpu::printSkinningUsages() {
+    PRINT_USAGE(SKINS);
+    PRINT_USAGE(ANIMATIONS);
+    PRINT_USAGE(PLAYBACKS);
+}
+
+gpu::Skin *gpu::createSkin(const library::Skin &librarySkin) {
+    gpu::Skin *skin = SKINS.acquire();
+    skin->librarySkin = &librarySkin;
+    return skin;
+}
+
+void gpu::freeSkin(gpu::Skin *skin) {
+    skin->animations.clear();
+    skin->playback = nullptr;
+    skin->joints.clear();
+    skin->librarySkin = nullptr;
+    SKINS.free(skin);
 }
 
 void gpu::freeAnimation(Animation *animation) {

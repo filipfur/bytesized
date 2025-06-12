@@ -24,11 +24,6 @@ static recycler<gpu::Shader, BYTESIZED_SHADER_COUNT> SHADERS = {};
 static recycler<gpu::ShaderProgram, BYTESIZED_SHADERPROGRAM_COUNT> SHADERPROGRAMS = {};
 static recycler<gpu::Text, BYTESIZED_TEXT_COUNT> TEXTS = {};
 static recycler<gpu::Framebuffer, BYTESIZED_FRAMEBUFFER_COUNT> FRAMEBUFFERS = {};
-#ifdef BYTESIZED_USE_SKINNING
-static recycler<gpu::Skin, BYTESIZED_SKIN_COUNT> SKINS = {};
-static recycler<gpu::Animation, BYTESIZED_ANIMATION_COUNT> ANIMATIONS = {};
-static recycler<gpu::Playback, BYTESIZED_PLAYBACK_COUNT> PLAYBACKS = {};
-#endif
 
 #define PRINT_USAGE(var)                                                                           \
     do {                                                                                           \
@@ -51,9 +46,7 @@ void gpu::printAllocations() {
     PRINT_USAGE(TEXTS);
     PRINT_USAGE(FRAMEBUFFERS);
 #ifdef BYTESIZED_USE_SKINNING
-    PRINT_USAGE(SKINS);
-    PRINT_USAGE(ANIMATIONS);
-    PRINT_USAGE(PLAYBACKS);
+    gpu::printSkinningUsages();
 #endif
     printf("-------------------------\n\n");
 }
@@ -90,7 +83,7 @@ void gpu::allocate() {
          sizeof(UBOS) + sizeof(MESHES) + sizeof(PRIMITIVES) + sizeof(NODES) + sizeof(SCENES) +
          sizeof(SHADERS) + sizeof(SHADERPROGRAMS) + sizeof(TEXTS) + sizeof(FRAMEBUFFERS));
 #ifdef BYTESIZED_USE_SKINNING
-    allocatedBytes += sizeof(SKINS) + sizeof(ANIMATIONS) + sizeof(PLAYBACKS);
+    allocatedBytes += gpu::skinningBufferSize();
 #endif
     LOG_INFO("GPU recyclers RAM usage: %.1f KB", allocatedBytes * 1e-3f);
 
@@ -567,8 +560,7 @@ gpu::Node *gpu::createNode(const library::Node &libraryNode) {
         node->children.emplace_back(createNode(*libraryChild))->setParent(node);
 #ifdef BYTESIZED_USE_SKINNING
         if (libraryChild->skin) {
-            node->skin = SKINS.acquire();
-            node->skin->librarySkin = libraryChild->skin;
+            node->skin = gpu::createSkin(*libraryChild->skin);
         }
 #endif
     }
@@ -649,13 +641,7 @@ void gpu::freeNode(gpu::Node *node) {
         }
         node->skin->playback->animation = nullptr;
         gpu::freePlayback(node->skin->playback);
-        node->skin->animations.clear();
-        node->skin->playback = nullptr;
-
-        node->skin->joints.clear();
-        node->skin->librarySkin = nullptr;
-        SKINS.free(node->skin);
-        node->skin = nullptr;
+        gpu::freeSkin(node->skin);
     }
 #endif
     for (Node *child : node->children) {
