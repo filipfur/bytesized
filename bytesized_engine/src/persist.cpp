@@ -5,6 +5,7 @@
 #include "logging.h"
 #include <algorithm>
 #include <cassert>
+#include <fstream>
 #include <list>
 
 static persist::IPersist *_iPersist{nullptr};
@@ -12,17 +13,22 @@ static persist::IPersist *_iPersist{nullptr};
 void persist::registerIPersist(IPersist *iPersist) { _iPersist = iPersist; }
 
 void persist::storeSession(const SessionData &sessionData) {
-    FILE *file = fopen("session.bin", "w");
-    fwrite(&sessionData, sizeof(SessionData), 1, file);
-    fflush(file);
-    fclose(file);
+    std::ofstream ofs{"session.txt"};
+    ofs << sessionData.cameraView.center.x << ' ' << sessionData.cameraView.center.y << ' '
+        << sessionData.cameraView.center.z << ' ' << sessionData.cameraView.yaw << ' '
+        << sessionData.cameraView.pitch << ' ' << sessionData.cameraView.distance << ' '
+        << sessionData.recentFile;
 }
 
 bool persist::loadSession(SessionData &sessionData) {
-    FILE *file = fopen("session.bin", "r");
-    if (file) {
-        fread(&sessionData, sizeof(SessionData), 1, file);
-        fclose(file);
+    std::ifstream ifs{"session.txt"};
+    if (ifs) {
+        ifs >> sessionData.cameraView.center.x >> sessionData.cameraView.center.y >>
+            sessionData.cameraView.center.z >> sessionData.cameraView.yaw >>
+            sessionData.cameraView.pitch >> sessionData.cameraView.distance;
+        ifs.ignore();
+        ifs.get(sessionData.recentFile, sizeof(sessionData.recentFile));
+        printf("got: '%s'", sessionData.recentFile);
         return true;
     }
     return false;
