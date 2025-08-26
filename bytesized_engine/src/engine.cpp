@@ -2,7 +2,7 @@
 #include "builtin_shader.h"
 #include "character.h"
 #include "component.h"
-#include "dexterity.h"
+#include "dex.h"
 #include "ecs.h"
 #include "embed/boxxy_bdf.hpp"
 #include "geom_primitive.h"

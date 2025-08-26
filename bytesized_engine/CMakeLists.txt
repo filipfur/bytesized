@@ -29,6 +29,7 @@ add_library(bytesized_engine
     src/editor.cpp
     src/engine.cpp
     src/runtime.cpp
+    src/frame.cpp
 )
 add_dependencies(bytesized_engine bytesized_assets)
 

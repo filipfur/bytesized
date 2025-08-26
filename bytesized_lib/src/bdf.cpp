@@ -4,7 +4,11 @@
 #include <cstdlib>
 #include <string_view>
 
-static recycler<bdf::Font, 5> FONTS = {};
+#ifndef BYTESIZED_BDF_COUNT
+#define BYTESIZED_BDF_COUNT 1
+#endif
+
+static recycler<bdf::Font, 1> FONTS = {};
 
 static bool is_int(char c) { return (c >= '0' && c <= '9') || c == '-'; }
 

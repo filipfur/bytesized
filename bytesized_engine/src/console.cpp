@@ -1,5 +1,5 @@
 #include "console.h"
-#include "dexterity.h"
+#include "dex.h"
 #include "gpu.h"
 #include "logging.h"
 #include "recycler.hpp"

@@ -2,7 +2,6 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 
-#include "debug.hpp"
 #include "logging.h"
 #include "opengl.h"
 #include "primer.h"

@@ -27,7 +27,6 @@ add_library(bytesized_lib
     src/sprite.cpp
     src/time.cpp
     src/blur_renderer.cpp
-    src/frame.cpp
     src/skydome.cpp
 )
 
